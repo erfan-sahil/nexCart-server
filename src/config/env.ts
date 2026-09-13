@@ -20,7 +20,11 @@ const envSchema = z.object({
     ),
   BODY_LIMIT: z.string().default('10kb'),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
-  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
+  RATE_LIMIT_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   TRUST_PROXY: booleanFromString,

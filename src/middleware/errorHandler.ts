@@ -29,7 +29,10 @@ const normalizeError = (err: Error): AppError => {
     return AppError.validation('Validation failed', details);
   }
 
-  if (err instanceof SyntaxError || (isBodyParserError(err) && err.type === 'entity.parse.failed')) {
+  if (
+    err instanceof SyntaxError ||
+    (isBodyParserError(err) && err.type === 'entity.parse.failed')
+  ) {
     return AppError.badRequest('Invalid JSON payload');
   }
 
@@ -81,7 +84,8 @@ export const errorHandler = (
 
   const payload: ApiErrorResponse = {
     success: false,
-    message: isProduction && !normalized.isOperational ? 'Internal server error' : normalized.message,
+    message:
+      isProduction && !normalized.isOperational ? 'Internal server error' : normalized.message,
     code: normalized.code,
     requestId,
   };
