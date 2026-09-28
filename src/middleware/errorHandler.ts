@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { isProduction } from '../config/env';
-import type { ApiErrorResponse } from '../types';
+import type { ApiErrorResponse, FieldError } from '../types';
 import { AppError } from '../utils/AppError';
 import { logger } from '../utils/logger';
 
@@ -11,22 +11,27 @@ type BodyParserError = Error & {
   type?: string;
 };
 
-const isBodyParserError = (err: Error): err is BodyParserError => {
-  return 'type' in err || 'status' in err || 'statusCode' in err;
+const isBodyParserError = (err: unknown): err is BodyParserError => {
+  return err instanceof Error && ('type' in err || 'status' in err || 'statusCode' in err);
 };
 
-const normalizeError = (err: Error): AppError => {
+const zodFieldErrors = (error: ZodError): FieldError[] =>
+  error.issues.map((issue) => ({
+    path: issue.path.join('.') || 'root',
+    message: issue.message,
+  }));
+
+const normalizeError = (err: unknown): AppError => {
   if (err instanceof AppError) {
     return err;
   }
 
   if (err instanceof ZodError) {
-    const details = err.issues.map((issue) => ({
-      path: issue.path.join('.') || 'root',
-      message: issue.message,
-    }));
+    return AppError.validation('Validation failed', zodFieldErrors(err));
+  }
 
-    return AppError.validation('Validation failed', details);
+  if (err instanceof URIError) {
+    return AppError.badRequest('Malformed URL');
   }
 
   if (
@@ -40,19 +45,19 @@ const normalizeError = (err: Error): AppError => {
     return AppError.payloadTooLarge();
   }
 
-  if (err instanceof URIError) {
-    return AppError.badRequest('Malformed URL');
-  }
-
   if (isBodyParserError(err) && (err.status === 400 || err.statusCode === 400)) {
-    return AppError.badRequest(err.message || 'Bad request');
+    return AppError.badRequest('Bad request');
   }
 
-  return AppError.internal(isProduction ? 'Internal server error' : err.message);
+  if (err instanceof Error) {
+    return AppError.internal(isProduction ? 'Internal server error' : err.message);
+  }
+
+  return AppError.internal();
 };
 
 export const errorHandler = (
-  err: Error,
+  err: unknown,
   req: Request,
   res: Response<ApiErrorResponse>,
   next: NextFunction,
@@ -63,23 +68,20 @@ export const errorHandler = (
   }
 
   const normalized = normalizeError(err);
-  const requestId = req.requestId ?? 'unknown';
+  const requestId = req.requestId || 'unknown';
+  const log = req.log ?? logger;
+  const logMeta = {
+    requestId,
+    method: req.method,
+    path: req.path,
+    statusCode: normalized.statusCode,
+    code: normalized.code,
+  };
 
   if (!normalized.isOperational || normalized.statusCode >= 500) {
-    logger.error(normalized.message, {
-      requestId,
-      method: req.method,
-      path: req.path,
-      code: normalized.code,
-      err,
-    });
+    log.error(normalized.message, { ...logMeta, err });
   } else {
-    logger.warn(normalized.message, {
-      requestId,
-      method: req.method,
-      path: req.path,
-      code: normalized.code,
-    });
+    log.warn(normalized.message, logMeta);
   }
 
   const payload: ApiErrorResponse = {
@@ -90,11 +92,11 @@ export const errorHandler = (
     requestId,
   };
 
-  if (normalized.details) {
+  if (normalized.details && normalized.details.length > 0) {
     payload.errors = normalized.details;
   }
 
-  if (!isProduction && normalized.statusCode >= 500 && err.stack) {
+  if (!isProduction && normalized.statusCode >= 500 && err instanceof Error && err.stack) {
     payload.stack = err.stack;
   }
 

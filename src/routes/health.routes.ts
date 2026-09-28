@@ -6,11 +6,15 @@ import { sendSuccess } from '../utils/sendResponse';
 export const healthRouter = Router();
 
 healthRouter.get('/', (_req, res) => {
-  sendSuccess(res, {
-    status: 'ok',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  });
+  sendSuccess(
+    res,
+    {
+      status: 'ok',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    },
+    { message: 'Service is healthy' },
+  );
 });
 
 healthRouter.get('/ready', (_req, res) => {
@@ -18,8 +22,12 @@ healthRouter.get('/ready', (_req, res) => {
     throw AppError.serviceUnavailable('Server is not ready');
   }
 
-  sendSuccess(res, {
-    status: 'ready',
-    timestamp: new Date().toISOString(),
-  });
+  sendSuccess(
+    res,
+    {
+      status: 'ready',
+      timestamp: new Date().toISOString(),
+    },
+    { message: 'Service is ready' },
+  );
 });

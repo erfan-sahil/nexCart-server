@@ -1,0 +1,83 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nexcart-api
+    container_name: nexcart-api
+    restart: unless-stopped
+    ports:
+      - '${API_PORT:-4000}:4000'
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME:-nexcart}:${MONGO_ROOT_PASSWORD:-nexcart}@mongodb:27017/${MONGO_DATABASE:-nexcart}?authSource=admin
+      REDIS_URL: redis://:${REDIS_PASSWORD:-nexcart}@redis:6379
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - nexcart
+
+  mongodb:
+    image: mongo:7
+    container_name: nexcart-mongodb
+    restart: unless-stopped
+    ports:
+      - '${MONGO_PORT:-27017}:27017'
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-nexcart}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-nexcart}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-nexcart}
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'mongosh --quiet --username "$$MONGO_INITDB_ROOT_USERNAME" --password "$$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand(''ping'').ok"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - nexcart
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexcart-redis
+    restart: unless-stopped
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --requirepass
+      - ${REDIS_PASSWORD:-nexcart}
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-nexcart}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - nexcart
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  nexcart:
+    name: nexcart

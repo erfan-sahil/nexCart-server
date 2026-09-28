@@ -5,8 +5,10 @@ import { logger } from './utils/logger';
 
 const app = createApp();
 
-const server = app.listen(env.PORT, () => {
-  logger.info(`NexCart API running on http://localhost:${env.PORT}`, {
+const host = '0.0.0.0';
+
+const server = app.listen(env.PORT, host, () => {
+  logger.info(`NexCart API running on http://${host}:${env.PORT}`, {
     env: env.NODE_ENV,
   });
 });
