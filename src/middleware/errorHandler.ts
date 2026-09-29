@@ -1,9 +1,11 @@
 import type { NextFunction, Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { ZodError } from 'zod';
 import { isProduction } from '../config/env';
 import type { ApiErrorResponse, FieldError } from '../types';
 import { AppError } from '../utils/AppError';
 import { logger } from '../utils/logger';
+import { isDuplicateKeyError } from '../utils/mongoError';
 
 type BodyParserError = Error & {
   status?: number;
@@ -28,6 +30,24 @@ const normalizeError = (err: unknown): AppError => {
 
   if (err instanceof ZodError) {
     return AppError.validation('Validation failed', zodFieldErrors(err));
+  }
+
+  if (isDuplicateKeyError(err)) {
+    return AppError.conflict('A record with this value already exists');
+  }
+
+  if (err instanceof mongoose.Error.CastError) {
+    return AppError.badRequest('Invalid identifier');
+  }
+
+  if (err instanceof mongoose.Error.ValidationError) {
+    return AppError.validation(
+      'Validation failed',
+      Object.values(err.errors).map((issue) => ({
+        path: issue.path || 'root',
+        message: issue.message,
+      })),
+    );
   }
 
   if (err instanceof URIError) {

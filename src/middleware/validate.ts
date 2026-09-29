@@ -7,6 +7,15 @@ type RequestSchema = {
   params?: ZodType;
 };
 
+const assignRequestProperty = (req: Request, key: 'query' | 'params', value: unknown) => {
+  Object.defineProperty(req, key, {
+    value,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
+};
+
 export const validate =
   (schema: RequestSchema) => async (req: Request, _res: Response, next: NextFunction) => {
     try {
@@ -15,11 +24,11 @@ export const validate =
       }
 
       if (schema.query) {
-        req.query = (await schema.query.parseAsync(req.query)) as typeof req.query;
+        assignRequestProperty(req, 'query', await schema.query.parseAsync(req.query));
       }
 
       if (schema.params) {
-        req.params = (await schema.params.parseAsync(req.params)) as typeof req.params;
+        assignRequestProperty(req, 'params', await schema.params.parseAsync(req.params));
       }
 
       next();

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import { appState } from '../config/appState';
 import { AppError } from '../utils/AppError';
 import { sendSuccess } from '../utils/sendResponse';
@@ -18,7 +19,11 @@ healthRouter.get('/', (_req, res) => {
 });
 
 healthRouter.get('/ready', (_req, res) => {
-  if (appState.isShuttingDown || !appState.isReady) {
+  if (
+    appState.isShuttingDown ||
+    !appState.isReady ||
+    mongoose.connection.readyState !== mongoose.ConnectionStates.connected
+  ) {
     throw AppError.serviceUnavailable('Server is not ready');
   }
 
