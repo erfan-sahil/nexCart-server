@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NexCart API",
-    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). `baseUrl` defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n\nRun **Setup flow** top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- select and multiselect need at least one option. text, number, and boolean cannot have options.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list.",
+    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- select and multiselect need at least one option. text, number, and boolean cannot have options.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -72,7 +72,7 @@
               "raw": "{\n  \"name\": \"Electronics {{$timestamp}}\",\n  \"description\": \"Phones, laptops, and accessories\",\n  \"image\": \"https://cdn.example.com/categories/electronics.jpg\",\n  \"parentId\": null,\n  \"level\": 1,\n  \"isActive\": true,\n  \"sortOrder\": 1\n}"
             },
             "url": "{{baseUrl}}/api/categories",
-            "description": "Root category. `slug` is optional; the API slugifies `name` when it is omitted. `level` must be 1 when there is no parent."
+            "description": "Root category. slug is optional; the API slugifies name when it is omitted. level must be 1 when there is no parent."
           }
         },
         {
@@ -151,7 +151,7 @@
               "raw": "{\n  \"name\": \"Color {{$timestamp}}\",\n  \"description\": \"Product color\",\n  \"type\": \"select\",\n  \"role\": \"variant\",\n  \"isFilterable\": true,\n  \"isActive\": true,\n  \"options\": [\n    { \"label\": \"Black\", \"value\": \"black\", \"sortOrder\": 0, \"isActive\": true },\n    { \"label\": \"White\", \"sortOrder\": 1, \"isActive\": true },\n    { \"label\": \"Blue\", \"value\": \"blue\", \"sortOrder\": 2 }\n  ]\n}"
             },
             "url": "{{baseUrl}}/api/attributes",
-            "description": "Choice types (`select`, `multiselect`) require options. `value` is optional and is slugified from `label` when omitted. Variant role only allows text, number, or select."
+            "description": "Choice types (select, multiselect) require options. value is optional and is slugified from label when omitted. Variant role only allows text, number, or select."
           }
         },
         {
@@ -177,7 +177,7 @@
               "raw": "{\n  \"name\": \"Storage {{$timestamp}}\",\n  \"description\": \"Internal storage\",\n  \"type\": \"number\",\n  \"role\": \"spec\",\n  \"unit\": \"GB\",\n  \"isFilterable\": true,\n  \"isActive\": true\n}"
             },
             "url": "{{baseUrl}}/api/attributes",
-            "description": "`unit` is allowed only when type is number. Do not send `options`."
+            "description": "unit is allowed only when type is number. Do not send options."
           }
         },
         {
@@ -228,7 +228,7 @@
               "raw": "{\n  \"name\": \"Features {{$timestamp}}\",\n  \"type\": \"multiselect\",\n  \"role\": \"spec\",\n  \"isFilterable\": true,\n  \"isActive\": true,\n  \"options\": [\n    { \"label\": \"5G\", \"value\": \"5g\", \"sortOrder\": 0 },\n    { \"label\": \"Wireless charging\", \"value\": \"wireless-charging\", \"sortOrder\": 1 },\n    { \"label\": \"Water resistant\", \"value\": \"water-resistant\", \"sortOrder\": 2 }\n  ]\n}"
             },
             "url": "{{baseUrl}}/api/attributes",
-            "description": "`multiselect` cannot be a variant. Option values must be unique, lowercase, and URL-friendly."
+            "description": "multiselect cannot be a variant. Option values must be unique, lowercase, and URL-friendly."
           }
         },
         {
@@ -252,7 +252,7 @@
               "raw": "{\n  \"attributes\": [\n    {\n      \"attributeId\": \"{{colorAttributeId}}\",\n      \"isRequired\": true,\n      \"isFilterable\": true,\n      \"sortOrder\": 0\n    },\n    {\n      \"attributeId\": \"{{storageAttributeId}}\",\n      \"isRequired\": true,\n      \"isFilterable\": true,\n      \"sortOrder\": 1\n    },\n    {\n      \"attributeId\": \"{{materialAttributeId}}\",\n      \"isRequired\": false,\n      \"isFilterable\": false,\n      \"sortOrder\": 2\n    },\n    {\n      \"attributeId\": \"{{featuresAttributeId}}\",\n      \"isRequired\": false,\n      \"isFilterable\": true,\n      \"sortOrder\": 3\n    }\n  ]\n}"
             },
             "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}/attributes",
-            "description": "Replaces every assignment on this category. Send `attributes: []` to clear them. Each attributeId can appear once. Inactive attributes cannot be assigned."
+            "description": "Replaces every assignment on this category. Send attributes: [] to clear them. Each attributeId can appear once. Inactive attributes cannot be assigned."
           }
         }
       ]
@@ -270,7 +270,7 @@
               "path": ["api", "categories"],
               "query": [
                 { "key": "page", "value": "1", "description": "Default 1" },
-                { "key": "limit", "value": "20", "description": "1–100, default 20" },
+                { "key": "limit", "value": "20", "description": "1-100, default 20" },
                 { "key": "level", "value": "1", "description": "1 | 2 | 3", "disabled": true },
                 {
                   "key": "parentId",
@@ -282,7 +282,7 @@
                 {
                   "key": "search",
                   "value": "phone",
-                  "description": "Name search, 1–80 chars",
+                  "description": "Name search, 1-80 chars",
                   "disabled": true
                 },
                 {
@@ -317,7 +317,7 @@
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/api/categories/slug/{{categorySlug}}",
-            "description": "Slug is lowercase, 2–80 chars, pattern a-z, 0-9, and hyphens."
+            "description": "Slug is lowercase, 2-80 chars, pattern a-z, 0-9, and hyphens."
           }
         },
         {
@@ -337,7 +337,7 @@
               "raw": "{\n  \"name\": \"Flagship phones\",\n  \"description\": \"Updated description\",\n  \"image\": \"https://cdn.example.com/categories/phones.jpg\",\n  \"isActive\": true,\n  \"sortOrder\": 2\n}"
             },
             "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}",
-            "description": "At least one field is required. `level` cannot be patched. To move a category, send a new `parentId` (or null to make it a root). Children must be moved or deleted first."
+            "description": "At least one field is required. level cannot be patched. To move a category, send a new parentId (or null to make it a root). Children must be moved or deleted first."
           }
         },
         {
@@ -397,7 +397,7 @@
               "path": ["api", "attributes"],
               "query": [
                 { "key": "page", "value": "1" },
-                { "key": "limit", "value": "20", "description": "1–100, default 20" },
+                { "key": "limit", "value": "20", "description": "1-100, default 20" },
                 {
                   "key": "type",
                   "value": "select",
@@ -451,7 +451,7 @@
               "raw": "{\n  \"description\": \"Primary product color\",\n  \"isFilterable\": true,\n  \"options\": [\n    { \"label\": \"Black\", \"value\": \"black\", \"sortOrder\": 0, \"isActive\": true },\n    { \"label\": \"White\", \"value\": \"white\", \"sortOrder\": 1, \"isActive\": true },\n    { \"label\": \"Silver\", \"value\": \"silver\", \"sortOrder\": 2, \"isActive\": true }\n  ]\n}"
             },
             "url": "{{baseUrl}}/api/attributes/{{colorAttributeId}}",
-            "description": "At least one field is required. Sending `options` replaces the option list. Include an option `id` to keep an existing option. Changing `type` away from select/multiselect is rejected if options are still present."
+            "description": "At least one field is required. Sending options replaces the option list. Include an option id to keep an existing option."
           }
         },
         {

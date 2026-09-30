@@ -4,6 +4,14 @@ ENV HUSKY=0
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
+# Local development. Source is bind-mounted at runtime and nodemon restarts on change.
+FROM deps AS dev
+ENV NODE_ENV=development
+COPY nodemon.json tsconfig.json ./
+COPY src ./src
+EXPOSE 4000
+CMD ["npm", "run", "dev", "--", "--legacy-watch"]
+
 FROM node:20-bookworm-slim AS build
 WORKDIR /app
 ENV HUSKY=0
