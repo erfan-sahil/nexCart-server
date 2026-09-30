@@ -1,8 +1,7 @@
 import compression from 'compression';
 import cors from 'cors';
-import express, { type Request } from 'express';
+import express from 'express';
 import helmet from 'helmet';
-import morgan from 'morgan';
 import { corsOptions } from './config/cors';
 import { env, isProduction } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
@@ -14,11 +13,10 @@ import {
 import { notFound } from './middleware/notFound';
 import { apiLimiter } from './middleware/rateLimiter';
 import { requestId } from './middleware/requestId';
+import { requestLogger } from './middleware/requestLogger';
 import { requestTimeout } from './middleware/requestTimeout';
 import { apiRouter } from './routes';
 import { sendSuccess } from './utils/sendResponse';
-
-morgan.token('request-id', (req) => (req as Request).requestId);
 
 export const createApp = () => {
   const app = express();
@@ -41,23 +39,23 @@ export const createApp = () => {
   app.use(express.urlencoded({ extended: true, limit: env.BODY_LIMIT }));
   app.use(requestTimeout);
   app.use(apiLimiter);
-  app.use(
-    morgan(isProduction ? ':method :url :status :response-time ms :request-id' : 'dev', {
-      skip: (req) => isProduction && req.path.startsWith('/api/health'),
-    }),
-  );
+  app.use(requestLogger);
 
   app.get('/favicon.ico', (_req, res) => {
     res.status(204).end();
   });
 
   app.get('/', (_req, res) => {
-    sendSuccess(res, {
-      name: 'NexCart API',
-      status: 'ok',
-      health: '/api/health',
-      ready: '/api/health/ready',
-    });
+    sendSuccess(
+      res,
+      {
+        name: 'NexCart API',
+        status: 'ok',
+        health: '/api/health',
+        ready: '/api/health/ready',
+      },
+      { message: 'NexCart API' },
+    );
   });
 
   app.use('/api', apiRouter);

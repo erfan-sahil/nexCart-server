@@ -1,0 +1,13 @@
+export const CATEGORY_LEVEL = {
+  ROOT: 1,
+  SUB: 2,
+  SUB_SUB: 3,
+} as const;
+
+export const CATEGORY_LEVELS = [
+  CATEGORY_LEVEL.ROOT,
+  CATEGORY_LEVEL.SUB,
+  CATEGORY_LEVEL.SUB_SUB,
+] as const;
+
+export const MAX_CATEGORY_LEVEL = CATEGORY_LEVEL.SUB_SUB;

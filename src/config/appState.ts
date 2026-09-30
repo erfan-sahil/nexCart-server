@@ -1,4 +1,4 @@
 export const appState = {
-  isReady: true,
+  isReady: false,
   isShuttingDown: false,
 };

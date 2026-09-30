@@ -9,6 +9,7 @@ const booleanFromString = z
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
+  LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'debug']).optional(),
   CORS_ORIGIN: z
     .string()
     .default('http://localhost:3000')
@@ -28,6 +29,8 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   TRUST_PROXY: booleanFromString,
+  MONGODB_URI: z.string().min(1).default('mongodb://127.0.0.1:27017/nexcart'),
+  REDIS_URL: z.string().min(1).default('redis://127.0.0.1:6379'),
 });
 
 const parsed = envSchema.safeParse(process.env);
