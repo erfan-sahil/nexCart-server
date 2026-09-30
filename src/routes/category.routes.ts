@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import { attributeController } from '../controllers/attribute.controller';
 import { categoryController } from '../controllers/category.controller';
 import { validate } from '../middleware/validate';
+import { replaceCategoryAttributesSchema } from '../validators/attribute.validator';
 import {
   categoryIdParamsSchema,
   categorySlugParamsSchema,
@@ -34,6 +36,18 @@ categoryRouter.post(
   '/',
   validate({ body: createCategorySchema }),
   categoryController.createCategory,
+);
+
+categoryRouter.get(
+  '/:id/attributes',
+  validate({ params: categoryIdParamsSchema }),
+  attributeController.listCategoryAttributes,
+);
+
+categoryRouter.put(
+  '/:id/attributes',
+  validate({ params: categoryIdParamsSchema, body: replaceCategoryAttributesSchema }),
+  attributeController.replaceCategoryAttributes,
 );
 
 categoryRouter.get(
