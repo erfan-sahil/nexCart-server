@@ -1,0 +1,468 @@
+{
+  "info": {
+    "name": "NexCart API",
+    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). `baseUrl` defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n\nRun **Setup flow** top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- select and multiselect need at least one option. text, number, and boolean cannot have options.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000" },
+    { "key": "rootCategoryId", "value": "" },
+    { "key": "subCategoryId", "value": "" },
+    { "key": "leafCategoryId", "value": "" },
+    { "key": "colorAttributeId", "value": "" },
+    { "key": "storageAttributeId", "value": "" },
+    { "key": "materialAttributeId", "value": "" },
+    { "key": "featuresAttributeId", "value": "" },
+    { "key": "categorySlug", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "General",
+      "item": [
+        {
+          "name": "API root",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/",
+            "description": "Returns the API name and the health paths."
+          }
+        },
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/health",
+            "description": "Liveness. Does not check the database."
+          }
+        },
+        {
+          "name": "Ready",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/health/ready",
+            "description": "Readiness. Returns 503 when the process is shutting down or MongoDB is not connected."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Setup flow",
+      "item": [
+        {
+          "name": "1. Create root category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Category created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('rootCategoryId', body.data.id);",
+                  "pm.collectionVariables.set('categorySlug', body.data.slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Electronics {{$timestamp}}\",\n  \"description\": \"Phones, laptops, and accessories\",\n  \"image\": \"https://cdn.example.com/categories/electronics.jpg\",\n  \"parentId\": null,\n  \"level\": 1,\n  \"isActive\": true,\n  \"sortOrder\": 1\n}"
+            },
+            "url": "{{baseUrl}}/api/categories",
+            "description": "Root category. `slug` is optional; the API slugifies `name` when it is omitted. `level` must be 1 when there is no parent."
+          }
+        },
+        {
+          "name": "2. Create subcategory",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Category created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('subCategoryId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Phones {{$timestamp}}\",\n  \"description\": \"Mobile phones\",\n  \"parentId\": \"{{rootCategoryId}}\",\n  \"level\": 2,\n  \"isActive\": true,\n  \"sortOrder\": 1\n}"
+            },
+            "url": "{{baseUrl}}/api/categories",
+            "description": "Level 2 must use a level 1 parent."
+          }
+        },
+        {
+          "name": "3. Create leaf category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Category created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('leafCategoryId', body.data.id);",
+                  "pm.collectionVariables.set('categorySlug', body.data.slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Smartphones {{$timestamp}}\",\n  \"slug\": \"smartphones-{{$timestamp}}\",\n  \"description\": \"Android and iOS phones\",\n  \"parentId\": \"{{subCategoryId}}\",\n  \"level\": 3,\n  \"isActive\": true,\n  \"sortOrder\": 1\n}"
+            },
+            "url": "{{baseUrl}}/api/categories",
+            "description": "Level 3 is the deepest level. A level 3 category cannot be a parent."
+          }
+        },
+        {
+          "name": "4. Create color attribute (select, variant)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Attribute created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('colorAttributeId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Color {{$timestamp}}\",\n  \"description\": \"Product color\",\n  \"type\": \"select\",\n  \"role\": \"variant\",\n  \"isFilterable\": true,\n  \"isActive\": true,\n  \"options\": [\n    { \"label\": \"Black\", \"value\": \"black\", \"sortOrder\": 0, \"isActive\": true },\n    { \"label\": \"White\", \"sortOrder\": 1, \"isActive\": true },\n    { \"label\": \"Blue\", \"value\": \"blue\", \"sortOrder\": 2 }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes",
+            "description": "Choice types (`select`, `multiselect`) require options. `value` is optional and is slugified from `label` when omitted. Variant role only allows text, number, or select."
+          }
+        },
+        {
+          "name": "5. Create storage attribute (number, spec)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Attribute created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('storageAttributeId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Storage {{$timestamp}}\",\n  \"description\": \"Internal storage\",\n  \"type\": \"number\",\n  \"role\": \"spec\",\n  \"unit\": \"GB\",\n  \"isFilterable\": true,\n  \"isActive\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes",
+            "description": "`unit` is allowed only when type is number. Do not send `options`."
+          }
+        },
+        {
+          "name": "6. Create material attribute (text, spec)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Attribute created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('materialAttributeId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Material {{$timestamp}}\",\n  \"type\": \"text\",\n  \"role\": \"spec\",\n  \"isFilterable\": false,\n  \"isActive\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes"
+          }
+        },
+        {
+          "name": "7. Create features attribute (multiselect, spec)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Attribute created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('featuresAttributeId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Features {{$timestamp}}\",\n  \"type\": \"multiselect\",\n  \"role\": \"spec\",\n  \"isFilterable\": true,\n  \"isActive\": true,\n  \"options\": [\n    { \"label\": \"5G\", \"value\": \"5g\", \"sortOrder\": 0 },\n    { \"label\": \"Wireless charging\", \"value\": \"wireless-charging\", \"sortOrder\": 1 },\n    { \"label\": \"Water resistant\", \"value\": \"water-resistant\", \"sortOrder\": 2 }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes",
+            "description": "`multiselect` cannot be a variant. Option values must be unique, lowercase, and URL-friendly."
+          }
+        },
+        {
+          "name": "8. Assign attributes to leaf category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 Category attributes updated', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"attributes\": [\n    {\n      \"attributeId\": \"{{colorAttributeId}}\",\n      \"isRequired\": true,\n      \"isFilterable\": true,\n      \"sortOrder\": 0\n    },\n    {\n      \"attributeId\": \"{{storageAttributeId}}\",\n      \"isRequired\": true,\n      \"isFilterable\": true,\n      \"sortOrder\": 1\n    },\n    {\n      \"attributeId\": \"{{materialAttributeId}}\",\n      \"isRequired\": false,\n      \"isFilterable\": false,\n      \"sortOrder\": 2\n    },\n    {\n      \"attributeId\": \"{{featuresAttributeId}}\",\n      \"isRequired\": false,\n      \"isFilterable\": true,\n      \"sortOrder\": 3\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}/attributes",
+            "description": "Replaces every assignment on this category. Send `attributes: []` to clear them. Each attributeId can appear once. Inactive attributes cannot be assigned."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "List categories",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/categories?page=1&limit=20&level=1&isActive=true&search=phone&sort=sortOrder",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "categories"],
+              "query": [
+                { "key": "page", "value": "1", "description": "Default 1" },
+                { "key": "limit", "value": "20", "description": "1–100, default 20" },
+                { "key": "level", "value": "1", "description": "1 | 2 | 3", "disabled": true },
+                {
+                  "key": "parentId",
+                  "value": "{{rootCategoryId}}",
+                  "description": "24-char Mongo id",
+                  "disabled": true
+                },
+                { "key": "isActive", "value": "true", "description": "true | false" },
+                {
+                  "key": "search",
+                  "value": "phone",
+                  "description": "Name search, 1–80 chars",
+                  "disabled": true
+                },
+                {
+                  "key": "sort",
+                  "value": "sortOrder",
+                  "description": "sortOrder | -sortOrder | name | -name | createdAt | -createdAt"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Category tree",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/categories/tree?isActive=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "categories", "tree"],
+              "query": [
+                {
+                  "key": "isActive",
+                  "value": "true",
+                  "description": "true | false. Omit to return every category."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get category by slug",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/categories/slug/{{categorySlug}}",
+            "description": "Slug is lowercase, 2–80 chars, pattern a-z, 0-9, and hyphens."
+          }
+        },
+        {
+          "name": "Get category by id",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}"
+          }
+        },
+        {
+          "name": "Update category",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Flagship phones\",\n  \"description\": \"Updated description\",\n  \"image\": \"https://cdn.example.com/categories/phones.jpg\",\n  \"isActive\": true,\n  \"sortOrder\": 2\n}"
+            },
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}",
+            "description": "At least one field is required. `level` cannot be patched. To move a category, send a new `parentId` (or null to make it a root). Children must be moved or deleted first."
+          }
+        },
+        {
+          "name": "List attributes on a category",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}/attributes"
+          }
+        },
+        {
+          "name": "Clear category attributes",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"attributes\": []\n}"
+            },
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}/attributes",
+            "description": "Run this before deleting an attribute that is still assigned."
+          }
+        },
+        {
+          "name": "Delete leaf category",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}",
+            "description": "Fails if the category still has children. Delete from the leaf upward."
+          }
+        },
+        {
+          "name": "Delete subcategory",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/categories/{{subCategoryId}}"
+          }
+        },
+        {
+          "name": "Delete root category",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/categories/{{rootCategoryId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Attributes",
+      "item": [
+        {
+          "name": "List attributes",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/attributes?page=1&limit=20&type=select&role=variant&isActive=true&sort=name",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "attributes"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20", "description": "1–100, default 20" },
+                {
+                  "key": "type",
+                  "value": "select",
+                  "description": "text | number | boolean | select | multiselect",
+                  "disabled": true
+                },
+                {
+                  "key": "role",
+                  "value": "variant",
+                  "description": "spec | variant",
+                  "disabled": true
+                },
+                { "key": "isActive", "value": "true", "description": "true | false" },
+                { "key": "search", "value": "color", "disabled": true },
+                {
+                  "key": "sort",
+                  "value": "name",
+                  "description": "name | -name | createdAt | -createdAt"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get attribute by id",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/attributes/{{colorAttributeId}}"
+          }
+        },
+        {
+          "name": "Create boolean attribute",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Waterproof {{$timestamp}}\",\n  \"type\": \"boolean\",\n  \"role\": \"spec\",\n  \"isFilterable\": true,\n  \"isActive\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes",
+            "description": "Boolean is an open type: no options, and it cannot be a variant."
+          }
+        },
+        {
+          "name": "Update attribute",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Primary product color\",\n  \"isFilterable\": true,\n  \"options\": [\n    { \"label\": \"Black\", \"value\": \"black\", \"sortOrder\": 0, \"isActive\": true },\n    { \"label\": \"White\", \"value\": \"white\", \"sortOrder\": 1, \"isActive\": true },\n    { \"label\": \"Silver\", \"value\": \"silver\", \"sortOrder\": 2, \"isActive\": true }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes/{{colorAttributeId}}",
+            "description": "At least one field is required. Sending `options` replaces the option list. Include an option `id` to keep an existing option. Changing `type` away from select/multiselect is rejected if options are still present."
+          }
+        },
+        {
+          "name": "Delete attribute",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/attributes/{{materialAttributeId}}",
+            "description": "Fails while the attribute is still assigned to a category. Clear assignments first."
+          }
+        }
+      ]
+    }
+  ]
+}
