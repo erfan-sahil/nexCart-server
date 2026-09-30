@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NexCart API",
-    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- select and multiselect need at least one option. text, number, and boolean cannot have options.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list.",
+    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -148,10 +148,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Color {{$timestamp}}\",\n  \"description\": \"Product color\",\n  \"type\": \"select\",\n  \"role\": \"variant\",\n  \"isFilterable\": true,\n  \"isActive\": true,\n  \"options\": [\n    { \"label\": \"Black\", \"value\": \"black\", \"sortOrder\": 0, \"isActive\": true },\n    { \"label\": \"White\", \"sortOrder\": 1, \"isActive\": true },\n    { \"label\": \"Blue\", \"value\": \"blue\", \"sortOrder\": 2 }\n  ]\n}"
+              "raw": "{\n  \"name\": \"Color {{$timestamp}}\",\n  \"description\": \"Product color\",\n  \"type\": \"select\",\n  \"role\": \"variant\",\n  \"isFilterable\": true,\n  \"isActive\": true\n}"
             },
             "url": "{{baseUrl}}/api/attributes",
-            "description": "Choice types (select, multiselect) require options. value is optional and is slugified from label when omitted. Variant role only allows text, number, or select."
+            "description": "Creates the shared attribute only. Option lists are set when the attribute is assigned to a category, so each category can use different values. Variant role only allows text, number, or select."
           }
         },
         {
@@ -225,10 +225,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Features {{$timestamp}}\",\n  \"type\": \"multiselect\",\n  \"role\": \"spec\",\n  \"isFilterable\": true,\n  \"isActive\": true,\n  \"options\": [\n    { \"label\": \"5G\", \"value\": \"5g\", \"sortOrder\": 0 },\n    { \"label\": \"Wireless charging\", \"value\": \"wireless-charging\", \"sortOrder\": 1 },\n    { \"label\": \"Water resistant\", \"value\": \"water-resistant\", \"sortOrder\": 2 }\n  ]\n}"
+              "raw": "{\n  \"name\": \"Features {{$timestamp}}\",\n  \"type\": \"multiselect\",\n  \"role\": \"spec\",\n  \"isFilterable\": true,\n  \"isActive\": true\n}"
             },
             "url": "{{baseUrl}}/api/attributes",
-            "description": "multiselect cannot be a variant. Option values must be unique, lowercase, and URL-friendly."
+            "description": "multiselect cannot be a variant. Allowed values are supplied on the category assignment."
           }
         },
         {
@@ -249,10 +249,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"attributes\": [\n    {\n      \"attributeId\": \"{{colorAttributeId}}\",\n      \"isRequired\": true,\n      \"isFilterable\": true,\n      \"sortOrder\": 0\n    },\n    {\n      \"attributeId\": \"{{storageAttributeId}}\",\n      \"isRequired\": true,\n      \"isFilterable\": true,\n      \"sortOrder\": 1\n    },\n    {\n      \"attributeId\": \"{{materialAttributeId}}\",\n      \"isRequired\": false,\n      \"isFilterable\": false,\n      \"sortOrder\": 2\n    },\n    {\n      \"attributeId\": \"{{featuresAttributeId}}\",\n      \"isRequired\": false,\n      \"isFilterable\": true,\n      \"sortOrder\": 3\n    }\n  ]\n}"
+              "raw": "{\n  \"attributes\": [\n    {\n      \"attributeId\": \"{{colorAttributeId}}\",\n      \"isRequired\": true,\n      \"isFilterable\": true,\n      \"sortOrder\": 0,\n      \"options\": [\n        { \"label\": \"Black\", \"value\": \"black\", \"sortOrder\": 0, \"isActive\": true },\n        { \"label\": \"White\", \"sortOrder\": 1, \"isActive\": true },\n        { \"label\": \"Blue\", \"value\": \"blue\", \"sortOrder\": 2 }\n      ]\n    },\n    {\n      \"attributeId\": \"{{storageAttributeId}}\",\n      \"isRequired\": true,\n      \"isFilterable\": true,\n      \"sortOrder\": 1\n    },\n    {\n      \"attributeId\": \"{{materialAttributeId}}\",\n      \"isRequired\": false,\n      \"isFilterable\": false,\n      \"sortOrder\": 2\n    },\n    {\n      \"attributeId\": \"{{featuresAttributeId}}\",\n      \"isRequired\": false,\n      \"isFilterable\": true,\n      \"sortOrder\": 3,\n      \"options\": [\n        { \"label\": \"5G\", \"value\": \"5g\", \"sortOrder\": 0 },\n        { \"label\": \"Wireless charging\", \"value\": \"wireless-charging\", \"sortOrder\": 1 },\n        { \"label\": \"Water resistant\", \"value\": \"water-resistant\", \"sortOrder\": 2 }\n      ]\n    }\n  ]\n}"
             },
             "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}/attributes",
-            "description": "Replaces every assignment on this category. Send attributes: [] to clear them. Each attributeId can appear once. Inactive attributes cannot be assigned."
+            "description": "Replaces every assignment on this category. Send attributes: [] to clear them. Each attributeId can appear once. Inactive attributes cannot be assigned. select and multiselect require options for this category. The same attribute can be assigned elsewhere with a different option list and a different isRequired flag. Include an option id to keep an existing option on this category."
           }
         }
       ]
@@ -448,10 +448,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"description\": \"Primary product color\",\n  \"isFilterable\": true,\n  \"options\": [\n    { \"label\": \"Black\", \"value\": \"black\", \"sortOrder\": 0, \"isActive\": true },\n    { \"label\": \"White\", \"value\": \"white\", \"sortOrder\": 1, \"isActive\": true },\n    { \"label\": \"Silver\", \"value\": \"silver\", \"sortOrder\": 2, \"isActive\": true }\n  ]\n}"
+              "raw": "{\n  \"description\": \"Primary product color\",\n  \"isFilterable\": true\n}"
             },
             "url": "{{baseUrl}}/api/attributes/{{colorAttributeId}}",
-            "description": "At least one field is required. Sending options replaces the option list. Include an option id to keep an existing option."
+            "description": "At least one field is required. Option lists are updated on the category assignment, not here."
           }
         },
         {

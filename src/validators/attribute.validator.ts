@@ -1,10 +1,5 @@
 import { z } from 'zod';
-import {
-  ATTRIBUTE_ROLES,
-  ATTRIBUTE_TYPES,
-  isChoiceAttributeType,
-  isVariantAttributeType,
-} from '../constants/attribute';
+import { ATTRIBUTE_ROLES, ATTRIBUTE_TYPES, isVariantAttributeType } from '../constants/attribute';
 
 const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
 
@@ -41,10 +36,13 @@ const attributeFields = {
   unit: z.string().trim().max(16).optional(),
   isFilterable: z.boolean().optional(),
   isActive: z.boolean().optional(),
-  options: z.array(optionSchema).max(100).optional(),
 };
 
-const uniqueOptionValues = (options: { label: string; value?: string }[], ctx: z.RefinementCtx) => {
+const uniqueOptionValues = (
+  options: { label: string; value?: string }[],
+  ctx: z.RefinementCtx,
+  pathPrefix: (string | number)[],
+) => {
   const seen = new Set<string>();
 
   options.forEach((option, index) => {
@@ -54,7 +52,7 @@ const uniqueOptionValues = (options: { label: string; value?: string }[], ctx: z
     if (seen.has(key)) {
       ctx.addIssue({
         code: 'custom',
-        path: ['options', index, 'value'],
+        path: [...pathPrefix, index, 'value'],
         message: 'Option values must be unique',
       });
     }
@@ -68,33 +66,14 @@ const refineAttribute = (
     type?: (typeof ATTRIBUTE_TYPES)[number];
     role?: (typeof ATTRIBUTE_ROLES)[number];
     unit?: string;
-    options?: { label: string; value?: string }[];
   },
   ctx: z.RefinementCtx,
 ) => {
-  const options = value.options ?? [];
-
   if (value.type && value.role === 'variant' && !isVariantAttributeType(value.type)) {
     ctx.addIssue({
       code: 'custom',
       path: ['type'],
       message: 'A variant attribute must be text, number, or a single select',
-    });
-  }
-
-  if (value.type && !isChoiceAttributeType(value.type) && options.length > 0) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['options'],
-      message: 'Open attributes accept any value and cannot use a fixed option list',
-    });
-  }
-
-  if (value.type && isChoiceAttributeType(value.type) && options.length === 0) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['options'],
-      message: 'Select attributes need at least one option',
     });
   }
 
@@ -105,14 +84,11 @@ const refineAttribute = (
       message: 'Only number attributes can have a unit',
     });
   }
-
-  if (isChoiceAttributeType(value.type ?? '')) {
-    uniqueOptionValues(options, ctx);
-  }
 };
 
 export const createAttributeSchema = z
   .object(attributeFields)
+  .strict()
   .superRefine((value, ctx) => refineAttribute(value, ctx));
 
 export const updateAttributeSchema = z
@@ -125,53 +101,12 @@ export const updateAttributeSchema = z
     unit: attributeFields.unit,
     isFilterable: attributeFields.isFilterable,
     isActive: attributeFields.isActive,
-    options: attributeFields.options,
   })
+  .strict()
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
     message: 'At least one field is required',
   })
-  .superRefine((value, ctx) => {
-    if (value.type && value.role === 'variant' && !isVariantAttributeType(value.type)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['type'],
-        message: 'A variant attribute must be text, number, or a single select',
-      });
-    }
-
-    if (value.type && !isChoiceAttributeType(value.type) && (value.options?.length ?? 0) > 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['options'],
-        message: 'Open attributes accept any value and cannot use a fixed option list',
-      });
-    }
-
-    if (
-      value.type &&
-      isChoiceAttributeType(value.type) &&
-      value.options &&
-      value.options.length === 0
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['options'],
-        message: 'Select attributes need at least one option',
-      });
-    }
-
-    if (value.unit && value.type && value.type !== 'number') {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['unit'],
-        message: 'Only number attributes can have a unit',
-      });
-    }
-
-    if (value.options && isChoiceAttributeType(value.type ?? 'select')) {
-      uniqueOptionValues(value.options, ctx);
-    }
-  });
+  .superRefine((value, ctx) => refineAttribute(value, ctx));
 
 export const listAttributesQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
@@ -187,17 +122,21 @@ export const attributeIdParamsSchema = z.object({
   id: objectIdSchema,
 });
 
-const assignmentSchema = z.object({
-  attributeId: objectIdSchema,
-  isRequired: z.boolean().optional(),
-  isFilterable: z.boolean().optional(),
-  sortOrder: z.number().int().min(0).max(10_000).optional(),
-});
+const assignmentSchema = z
+  .object({
+    attributeId: objectIdSchema,
+    isRequired: z.boolean().optional(),
+    isFilterable: z.boolean().optional(),
+    sortOrder: z.number().int().min(0).max(10_000).optional(),
+    options: z.array(optionSchema).max(100).optional(),
+  })
+  .strict();
 
 export const replaceCategoryAttributesSchema = z
   .object({
     attributes: z.array(assignmentSchema).max(100),
   })
+  .strict()
   .superRefine((value, ctx) => {
     const seen = new Set<string>();
 
@@ -211,6 +150,10 @@ export const replaceCategoryAttributesSchema = z
       }
 
       seen.add(item.attributeId);
+
+      if (item.options) {
+        uniqueOptionValues(item.options, ctx, ['attributes', index, 'options']);
+      }
     });
   });
 

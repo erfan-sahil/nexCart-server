@@ -1,34 +1,6 @@
 import { Schema, model, type InferSchemaType, type Types } from 'mongoose';
 import { ATTRIBUTE_ROLES, ATTRIBUTE_TYPES } from '../constants/attribute';
 
-const attributeOptionSchema = new Schema(
-  {
-    label: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 80,
-    },
-    value: {
-      type: String,
-      required: true,
-      trim: true,
-      lowercase: true,
-      maxlength: 80,
-    },
-    sortOrder: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-  },
-  { _id: true },
-);
-
 const attributeSchema = new Schema(
   {
     name: {
@@ -75,10 +47,6 @@ const attributeSchema = new Schema(
     isActive: {
       type: Boolean,
       default: true,
-    },
-    options: {
-      type: [attributeOptionSchema],
-      default: [],
     },
   },
   {

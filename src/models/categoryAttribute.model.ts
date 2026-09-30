@@ -1,5 +1,33 @@
 import { Schema, model, type InferSchemaType, type Types } from 'mongoose';
 
+const categoryAttributeOptionSchema = new Schema(
+  {
+    label: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 80,
+    },
+    value: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
+      maxlength: 80,
+    },
+    sortOrder: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  { _id: true },
+);
+
 const categoryAttributeSchema = new Schema(
   {
     categoryId: {
@@ -24,6 +52,10 @@ const categoryAttributeSchema = new Schema(
       type: Number,
       default: 0,
       min: 0,
+    },
+    options: {
+      type: [categoryAttributeOptionSchema],
+      default: [],
     },
   },
   {

@@ -26,7 +26,9 @@ import type {
   UpdateAttributeInput,
 } from '../validators/attribute.validator';
 
-type OptionInput = NonNullable<CreateAttributeInput['options']>[number];
+type OptionInput = NonNullable<
+  ReplaceCategoryAttributesInput['attributes'][number]['options']
+>[number];
 
 type OptionRecord = {
   _id: Types.ObjectId;
@@ -46,7 +48,6 @@ type AttributeRecord = {
   unit: string;
   isFilterable: boolean;
   isActive: boolean;
-  options: OptionRecord[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -58,6 +59,7 @@ type AssignmentRecord = {
   isRequired: boolean;
   isFilterable: boolean;
   sortOrder: number;
+  options: OptionRecord[];
 };
 
 const SORTS: Record<ListAttributesQuery['sort'], Record<string, 1 | -1>> = {
@@ -114,7 +116,6 @@ const toDto = (record: AttributeRecord): AttributeDto => {
     unit: record.unit,
     isFilterable: record.isFilterable,
     isActive: record.isActive,
-    options: isChoiceAttributeType(type) ? record.options.map(toOptionDto) : [],
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };
@@ -193,20 +194,9 @@ const assertRules = (
   type: (typeof ATTRIBUTE_TYPES)[number],
   role: (typeof ATTRIBUTE_ROLES)[number],
   unit: string,
-  optionCount: number,
 ) => {
   if (role === 'variant' && !isVariantAttributeType(type)) {
     throw AppError.validation('A variant attribute must be text, number, or a single select');
-  }
-
-  if (!isChoiceAttributeType(type) && optionCount > 0) {
-    throw AppError.validation(
-      'Open attributes accept any value and cannot use a fixed option list',
-    );
-  }
-
-  if (isChoiceAttributeType(type) && optionCount === 0) {
-    throw AppError.validation('Select attributes need at least one option');
   }
 
   if (unit && type !== 'number') {
@@ -238,6 +228,7 @@ const toAssignmentDto = (
     isRequired: row.isRequired,
     isFilterable: row.isFilterable,
     sortOrder: row.sortOrder,
+    options: isChoiceAttributeType(attribute.type) ? (row.options ?? []).map(toOptionDto) : [],
     attribute: toDto(attribute),
   };
 };
@@ -290,10 +281,9 @@ const loadEffective = async (categoryId: string) => {
 
 export const attributeService = {
   async create(input: CreateAttributeInput) {
-    const options = isChoiceAttributeType(input.type) ? prepareOptions(input.options ?? []) : [];
     const unit = input.type === 'number' ? (input.unit ?? '') : '';
 
-    assertRules(input.type, input.role, unit, options.length);
+    assertRules(input.type, input.role, unit);
 
     const slug = await resolveSlug(input.slug, input.name);
 
@@ -307,7 +297,6 @@ export const attributeService = {
         unit,
         isFilterable: input.isFilterable ?? true,
         isActive: input.isActive ?? true,
-        options,
       });
 
       return toDto(created);
@@ -360,9 +349,23 @@ export const attributeService = {
 
   async update(id: string, input: UpdateAttributeInput) {
     const attribute = await findAttribute(id);
-    const nextType = input.type ?? toType(attribute.type);
+    const previousType = toType(attribute.type);
+    const nextType = input.type ?? previousType;
     const nextRole = input.role ?? toRole(attribute.role);
     const nextUnit = input.unit !== undefined ? input.unit : attribute.unit;
+    const crossingToChoice =
+      !isChoiceAttributeType(previousType) && isChoiceAttributeType(nextType);
+    const crossingToOpen = isChoiceAttributeType(previousType) && !isChoiceAttributeType(nextType);
+
+    if (crossingToChoice) {
+      const assigned = await CategoryAttributeModel.exists({ attributeId: attribute._id });
+
+      if (assigned) {
+        throw AppError.validation(
+          'Add an option list on each category assignment before changing this attribute to a select type',
+        );
+      }
+    }
 
     if (input.name !== undefined) {
       attribute.name = input.name;
@@ -388,16 +391,17 @@ export const attributeService = {
       attribute.isActive = input.isActive;
     }
 
-    if (!isChoiceAttributeType(nextType)) {
-      attribute.set('options', []);
-    } else if (input.options) {
-      attribute.set('options', prepareOptions(input.options, attribute.options));
-    }
-
-    assertRules(nextType, nextRole, attribute.unit, attribute.options.length);
+    assertRules(nextType, nextRole, attribute.unit);
 
     try {
       await attribute.save();
+
+      if (crossingToOpen) {
+        await CategoryAttributeModel.updateMany(
+          { attributeId: attribute._id },
+          { $set: { options: [] } },
+        );
+      }
     } catch (error) {
       if (isDuplicateKeyError(error)) {
         throw AppError.conflict('An attribute with this slug already exists');
@@ -435,13 +439,15 @@ export const attributeService = {
 
     const ids = input.attributes.map((item) => item.attributeId);
     const attributes = await AttributeModel.find({ _id: { $in: ids } }).select(
-      '_id isActive isFilterable',
+      '_id name type isActive isFilterable',
     );
     const attributesById = new Map(
       attributes.map((attribute) => [String(attribute._id), attribute]),
     );
+    const existing = await CategoryAttributeModel.find({ categoryId: category._id }).lean();
+    const existingByAttributeId = new Map(existing.map((row) => [String(row.attributeId), row]));
 
-    for (const item of input.attributes) {
+    const prepared = input.attributes.map((item) => {
       const attribute = attributesById.get(item.attributeId);
 
       if (!attribute) {
@@ -451,11 +457,31 @@ export const attributeService = {
       if (!attribute.isActive) {
         throw AppError.validation('Inactive attributes cannot be assigned');
       }
-    }
 
-    const existing = await CategoryAttributeModel.find({ categoryId: category._id }).select(
-      'attributeId',
-    );
+      const choice = isChoiceAttributeType(attribute.type);
+      const requestedOptions = item.options ?? [];
+
+      if (choice && requestedOptions.length === 0) {
+        throw AppError.validation(
+          `"${attribute.name}" needs at least one option for this category`,
+        );
+      }
+
+      if (!choice && requestedOptions.length > 0) {
+        throw AppError.validation(
+          `"${attribute.name}" accepts any value and cannot use a fixed option list`,
+        );
+      }
+
+      const current = existingByAttributeId.get(item.attributeId);
+
+      return {
+        item,
+        attribute,
+        options: choice ? prepareOptions(requestedOptions, current?.options ?? []) : [],
+      };
+    });
+
     const nextIds = new Set(ids);
     const removable = existing
       .filter((row) => !nextIds.has(String(row.attributeId)))
@@ -469,21 +495,20 @@ export const attributeService = {
     }
 
     await Promise.all(
-      input.attributes.map((item) => {
-        const attribute = attributesById.get(item.attributeId);
-
-        return CategoryAttributeModel.findOneAndUpdate(
+      prepared.map(({ item, attribute, options }) =>
+        CategoryAttributeModel.findOneAndUpdate(
           { categoryId: category._id, attributeId: item.attributeId },
           {
             $set: {
               isRequired: item.isRequired ?? false,
-              isFilterable: item.isFilterable ?? attribute?.isFilterable ?? true,
+              isFilterable: item.isFilterable ?? attribute.isFilterable ?? true,
               sortOrder: item.sortOrder ?? 0,
+              options,
             },
           },
           { upsert: true, new: true, setDefaultsOnInsert: true },
-        );
-      }),
+        ),
+      ),
     );
 
     return loadEffective(categoryId);

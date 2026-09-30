@@ -25,7 +25,6 @@ export type AttributeDto = {
   unit: string;
   isFilterable: boolean;
   isActive: boolean;
-  options: AttributeOptionDto[];
   createdAt: string;
   updatedAt: string;
 };
@@ -37,5 +36,6 @@ export type CategoryAttributeDto = {
   isRequired: boolean;
   isFilterable: boolean;
   sortOrder: number;
+  options: AttributeOptionDto[];
   attribute: AttributeDto;
 };
