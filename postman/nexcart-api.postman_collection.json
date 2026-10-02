@@ -1,11 +1,13 @@
 {
   "info": {
     "name": "NexCart API",
-    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.",
+    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/auth (register, login, refresh, logout, logout-all, sessions, me)\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n\nAuth:\n- Register and login return an access token in the JSON body. Keep it in memory only.\n- The refresh token is an httpOnly cookie named refreshToken, path /api/auth. Postman stores it automatically.\n- Each device gets a stable sessionId. Login on another device creates another session.\n- GET /api/auth/sessions lists devices. DELETE /api/auth/sessions/:sessionId revokes one device.\n- GET /api/auth/me, session routes, and POST /api/auth/logout-all send Authorization: Bearer {{accessToken}}.\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:4000" },
+    { "key": "accessToken", "value": "" },
+    { "key": "sessionId", "value": "" },
     { "key": "rootCategoryId", "value": "" },
     { "key": "subCategoryId", "value": "" },
     { "key": "leafCategoryId", "value": "" },
@@ -41,6 +43,131 @@
             "method": "GET",
             "url": "{{baseUrl}}/api/health/ready",
             "description": "Readiness. Returns 503 when the process is shutting down or MongoDB is not connected."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Account created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('sessionId', body.data.sessionId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Sahil\",\n  \"lastName\": \"Rahman\",\n  \"email\": \"sahil{{$timestamp}}@example.com\",\n  \"password\": \"Password1\",\n  \"phone\": \"+8801712345678\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/register",
+            "description": "Creates a customer, returns the access token in the body, and sets the refresh token cookie."
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 Signed in', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('sessionId', body.data.sessionId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"sahil@example.com\",\n  \"password\": \"Password1\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login",
+            "description": "Checks email and password. Replaces the access token and rotates the refresh cookie."
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/auth/me",
+            "description": "Current user and the session id of this device. The access token is checked against that live session."
+          }
+        },
+        {
+          "name": "Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 Session refreshed', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('sessionId', body.data.sessionId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/refresh",
+            "description": "Rotates the refresh token for this device. The session id stays the same."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/logout",
+            "description": "Revokes this device session and clears the cookie. Other devices stay signed in."
+          }
+        },
+        {
+          "name": "Logout all",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/auth/logout-all",
+            "description": "Revokes every device session for the signed-in user and clears the cookie."
+          }
+        },
+        {
+          "name": "List sessions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/auth/sessions",
+            "description": "Active devices for the signed-in user. The current device has current set to true."
+          }
+        },
+        {
+          "name": "Revoke session",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/auth/sessions/{{sessionId}}",
+            "description": "Revokes one device. Revoking the current session also clears the refresh cookie."
           }
         }
       ]
