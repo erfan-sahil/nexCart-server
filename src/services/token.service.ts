@@ -1,7 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { USER_ROLES } from '../constants/auth';
 import { env } from '../config/env';
-import type { UserRole } from '../types/auth';
 import { AppError } from '../utils/AppError';
 
 const ISSUER = 'nexcart';
@@ -9,7 +7,6 @@ const AUDIENCE = 'nexcart-api';
 
 export type AccessTokenClaims = {
   sub: string;
-  role: UserRole;
   sid: string;
   type: 'access';
   iat: number;
@@ -26,9 +23,6 @@ export type RefreshTokenClaims = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-const isRole = (value: unknown): value is UserRole =>
-  typeof value === 'string' && USER_ROLES.some((role) => role === value);
-
 const verify = (token: string, secret: string, expiredMessage: string) => {
   try {
     return jwt.verify(token, secret, {
@@ -44,8 +38,8 @@ const verify = (token: string, secret: string, expiredMessage: string) => {
   }
 };
 
-export const signAccessToken = (userId: string, role: UserRole, sessionId: string) =>
-  jwt.sign({ sub: userId, role, sid: sessionId, type: 'access' }, env.JWT_ACCESS_SECRET, {
+export const signAccessToken = (userId: string, sessionId: string) =>
+  jwt.sign({ sub: userId, sid: sessionId, type: 'access' }, env.JWT_ACCESS_SECRET, {
     expiresIn: env.JWT_ACCESS_TTL_SECONDS,
     issuer: ISSUER,
     audience: AUDIENCE,
@@ -75,7 +69,6 @@ export const verifyAccessToken = (token: string): AccessTokenClaims => {
     decoded.type !== 'access' ||
     typeof decoded.sub !== 'string' ||
     typeof decoded.sid !== 'string' ||
-    !isRole(decoded.role) ||
     typeof decoded.iat !== 'number'
   ) {
     throw AppError.unauthorized('Invalid token');
@@ -83,7 +76,6 @@ export const verifyAccessToken = (token: string): AccessTokenClaims => {
 
   return {
     sub: decoded.sub,
-    role: decoded.role,
     sid: decoded.sid,
     type: 'access',
     iat: decoded.iat,

@@ -90,7 +90,7 @@ const revokeSession = (sessionId: string) =>
 const tokenPair = (user: PublicUser, sessionId: string, jti: string): AuthResult => ({
   user: toUserDto(user),
   sessionId,
-  accessToken: signAccessToken(String(user._id), toRole(user.role), sessionId),
+  accessToken: signAccessToken(String(user._id), sessionId),
   refreshToken: signRefreshToken({
     sub: String(user._id),
     jti,
