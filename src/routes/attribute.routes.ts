@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { Permission } from '../constants/permissions';
 import { attributeController } from '../controllers/attribute.controller';
+import { requirePermissions } from '../middleware/authorize';
 import { validate } from '../middleware/validate';
 import {
   attributeIdParamsSchema,
@@ -18,6 +20,7 @@ attributeRouter.get(
 
 attributeRouter.post(
   '/',
+  ...requirePermissions(Permission.attributeManage),
   validate({ body: createAttributeSchema }),
   attributeController.createAttribute,
 );
@@ -30,12 +33,14 @@ attributeRouter.get(
 
 attributeRouter.patch(
   '/:id',
+  ...requirePermissions(Permission.attributeManage),
   validate({ params: attributeIdParamsSchema, body: updateAttributeSchema }),
   attributeController.updateAttribute,
 );
 
 attributeRouter.delete(
   '/:id',
+  ...requirePermissions(Permission.attributeManage),
   validate({ params: attributeIdParamsSchema }),
   attributeController.deleteAttribute,
 );

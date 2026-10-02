@@ -64,7 +64,7 @@ const toStatus = (status: string): UserStatus => {
   return match;
 };
 
-const toUserDto = (user: PublicUser): UserDto => ({
+export const toUserDto = (user: PublicUser): UserDto => ({
   id: String(user._id),
   email: user.email,
   firstName: user.firstName,

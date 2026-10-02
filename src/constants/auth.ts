@@ -1,4 +1,4 @@
-export const USER_ROLES = ['customer', 'admin'] as const;
+export const USER_ROLES = ['customer', 'vendor', 'admin'] as const;
 
 export const USER_STATUSES = ['active', 'suspended'] as const;
 
