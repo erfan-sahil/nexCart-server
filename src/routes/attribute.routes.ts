@@ -20,7 +20,7 @@ attributeRouter.get(
 
 attributeRouter.post(
   '/',
-  ...requirePermissions(Permission.attributeManage),
+  ...requirePermissions(Permission.adminAttributes),
   validate({ body: createAttributeSchema }),
   attributeController.createAttribute,
 );
@@ -33,14 +33,14 @@ attributeRouter.get(
 
 attributeRouter.patch(
   '/:id',
-  ...requirePermissions(Permission.attributeManage),
+  ...requirePermissions(Permission.adminAttributes),
   validate({ params: attributeIdParamsSchema, body: updateAttributeSchema }),
   attributeController.updateAttribute,
 );
 
 attributeRouter.delete(
   '/:id',
-  ...requirePermissions(Permission.attributeManage),
+  ...requirePermissions(Permission.adminAttributes),
   validate({ params: attributeIdParamsSchema }),
   attributeController.deleteAttribute,
 );

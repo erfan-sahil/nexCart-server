@@ -36,7 +36,7 @@ categoryRouter.get(
 
 categoryRouter.post(
   '/',
-  ...requirePermissions(Permission.categoryManage),
+  ...requirePermissions(Permission.adminCategories),
   validate({ body: createCategorySchema }),
   categoryController.createCategory,
 );
@@ -49,7 +49,7 @@ categoryRouter.get(
 
 categoryRouter.put(
   '/:id/attributes',
-  ...requirePermissions(Permission.attributeManage),
+  ...requirePermissions(Permission.adminAttributes),
   validate({ params: categoryIdParamsSchema, body: replaceCategoryAttributesSchema }),
   attributeController.replaceCategoryAttributes,
 );
@@ -62,14 +62,14 @@ categoryRouter.get(
 
 categoryRouter.patch(
   '/:id',
-  ...requirePermissions(Permission.categoryManage),
+  ...requirePermissions(Permission.adminCategories),
   validate({ params: categoryIdParamsSchema, body: updateCategorySchema }),
   categoryController.updateCategory,
 );
 
 categoryRouter.delete(
   '/:id',
-  ...requirePermissions(Permission.categoryManage),
+  ...requirePermissions(Permission.adminCategories),
   validate({ params: categoryIdParamsSchema }),
   categoryController.deleteCategory,
 );

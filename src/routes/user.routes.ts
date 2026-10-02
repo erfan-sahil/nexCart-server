@@ -9,7 +9,7 @@ export const userRouter = Router();
 
 userRouter.patch(
   '/:id/role',
-  ...requirePermissions(Permission.userManage),
+  ...requirePermissions(Permission.adminPlatformSettings),
   validate({ params: userIdParamsSchema, body: updateUserRoleSchema }),
   userController.updateRole,
 );
