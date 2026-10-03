@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NexCart API",
-    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/auth (register, login, refresh, logout, logout-all, sessions, me)\n- /api/users/:id/role (admin assigns customer, vendor, or admin)\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n\nAuth:\n- Register and login return an access token in the JSON body. Keep it in memory only. The token identifies the user and the device session. Role and permissions are loaded from the database.\n- The refresh token is an httpOnly cookie named refreshToken, path /api/auth. Postman stores it automatically.\n- Each device gets a stable sessionId. Login on another device creates another session.\n- GET /api/auth/sessions lists devices. DELETE /api/auth/sessions/:sessionId revokes one device.\n- GET /api/auth/me, session routes, and POST /api/auth/logout-all send Authorization: Bearer {{accessToken}}.\n- Public registration always creates a customer. An admin assigns vendor or admin with PATCH /api/users/:id/role.\n- Customers can browse categories, search, filter, and use the product, store, cart, checkout, payment, order, tracking, review, and wishlist flows.\n- Vendors manage their store, products, variants, inventory, pricing, orders, shipping, coupons, and analytics.\n- Admins manage categories, attributes, units, brands, catalog, vendor approvals, product moderation, orders, coupons, promotions, commission, and platform settings.\n- Category and attribute writes require an admin access token. Assigning a role requires platform settings, which only admins have.\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.",
+    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/auth (register, login, refresh, logout, logout-all, sessions, me)\n- /api/users/:id/role (admin assigns customer, vendor, or admin)\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n- /api/vendor-applications (customer save and submit, admin review)\n\nAuth:\n- Register and login return an access token in the JSON body. Keep it in memory only. The token identifies the user and the device session. Role and permissions are loaded from the database.\n- The refresh token is an httpOnly cookie named refreshToken, path /api/auth. Postman stores it automatically.\n- Each device gets a stable sessionId. Login on another device creates another session.\n- GET /api/auth/sessions lists devices. DELETE /api/auth/sessions/:sessionId revokes one device.\n- GET /api/auth/me, session routes, and POST /api/auth/logout-all send Authorization: Bearer {{accessToken}}.\n- Public registration always creates a customer. An admin assigns vendor or admin with PATCH /api/users/:id/role.\n- Customers save an application with PATCH /api/vendor-applications/me, then submit it for review. There is no separate call to open an empty draft. Status moves draft, submitted, under review, more info required, then approved or rejected. Approval sets the account role to vendor. Document images are http(s) URLs. Trade license and tax details are optional.\n- Customers can browse categories, search, filter, and use the product, store, cart, checkout, payment, order, tracking, review, and wishlist flows.\n- Vendors manage their store, products, variants, inventory, pricing, orders, shipping, coupons, and analytics.\n- Admins manage categories, attributes, units, brands, catalog, vendor approvals, product moderation, orders, coupons, promotions, commission, and platform settings.\n- Category and attribute writes require an admin access token. Assigning a role requires platform settings, which only admins have.\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -51,6 +51,10 @@
     },
     {
       "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "vendorApplicationId",
       "value": ""
     }
   ],
@@ -845,6 +849,224 @@
                 "value": "Bearer {{accessToken}}"
               }
             ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vendor applications",
+      "item": [
+        {
+          "name": "Save application",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Vendor application saved', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('vendorApplicationId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"personal\": {\n    \"fullName\": \"Ayesha Rahman\",\n    \"email\": \"ayesha@example.com\",\n    \"phone\": \"+8801712345678\",\n    \"dateOfBirth\": \"1994-05-12\",\n    \"address\": {\n      \"line1\": \"12 Gulshan Avenue\",\n      \"city\": \"Dhaka\",\n      \"state\": \"Dhaka\",\n      \"postalCode\": \"1212\",\n      \"country\": \"Bangladesh\"\n    }\n  },\n  \"identity\": {\n    \"documentType\": \"nid\",\n    \"documentNumber\": \"1234567890\",\n    \"documentImages\": [\n      \"https://cdn.example.com/kyc/nid-front.jpg\",\n      \"https://cdn.example.com/kyc/nid-back.jpg\"\n    ],\n    \"selfieUrl\": \"https://cdn.example.com/kyc/selfie.jpg\"\n  },\n  \"business\": {\n    \"storeName\": \"Ayesha Home\",\n    \"businessType\": \"individual\",\n    \"address\": {\n      \"line1\": \"12 Gulshan Avenue\",\n      \"city\": \"Dhaka\",\n      \"state\": \"Dhaka\",\n      \"postalCode\": \"1212\",\n      \"country\": \"Bangladesh\"\n    }\n  },\n  \"selling\": {\n    \"categoryIds\": [\"{{leafCategoryId}}\"],\n    \"description\": \"Handmade home goods and small-batch textiles for everyday use.\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/me",
+            "description": "Signed-in customer. The first save creates the application and returns 201. Later saves return 200. Name, email, and phone are prefilled from the account when omitted. The status stays draft until submit. Admins and existing vendors cannot apply."
+          }
+        },
+        {
+          "name": "Get my application",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vendor-applications/me",
+            "description": "The signed-in customer's application, including status history and the latest review note."
+          }
+        },
+        {
+          "name": "Update draft",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business\": {\n    \"tradeLicense\": {\n      \"number\": \"TRAD-10293\",\n      \"documentUrl\": \"https://cdn.example.com/kyc/trade-license.pdf\"\n    },\n    \"tax\": {\n      \"taxId\": \"VAT-556677\",\n      \"documentUrl\": \"\"\n    }\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/me",
+            "description": "Saves more fields on the existing application. Allowed while the status is draft, more info required, or rejected. Send null for tradeLicense or tax to clear that optional block. Submitted and under review applications are locked."
+          }
+        },
+        {
+          "name": "Submit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vendor-applications/me/submit",
+            "description": "Moves draft, more info required, or rejected to submitted. Requires personal details, an identity document with at least one image, store details, one active category, and a business description of at least 20 characters. Selfie, trade license, and tax information stay optional. The applicant must be at least 18."
+          }
+        },
+        {
+          "name": "List applications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/vendor-applications?status=submitted&page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vendor-applications"],
+              "query": [
+                { "key": "status", "value": "submitted" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "includeDrafts", "value": "false", "disabled": true },
+                { "key": "sort", "value": "-submittedAt", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Drafts are hidden unless status=draft or includeDrafts=true. Search matches name, email, phone, and store name."
+          }
+        },
+        {
+          "name": "Get application",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}",
+            "description": "Admin only. Full application, including identity documents and status history."
+          }
+        },
+        {
+          "name": "Start review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Checking identity documents.\"\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}/review",
+            "description": "Admin only. submitted → under_review. note is optional."
+          }
+        },
+        {
+          "name": "Request more info",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Please upload a clearer photo of the NID.\"\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}/request-info",
+            "description": "Admin only. under_review → more_info_required. The applicant can edit and submit again."
+          }
+        },
+        {
+          "name": "Approve",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Identity and store details look good.\"\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}/approve",
+            "description": "Admin only. under_review → approved, and the applicant's role becomes vendor. The new role is read from the database on the next request."
+          }
+        },
+        {
+          "name": "Reject",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"The identity document does not match the applicant name.\"\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}/reject",
+            "description": "Admin only. under_review → rejected. The account stays a customer. The applicant can update the application and submit again."
           }
         }
       ]
