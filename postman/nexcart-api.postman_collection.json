@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NexCart API",
-    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/auth (register, login, refresh, logout, logout-all, sessions, me)\n- /api/users/:id/role (admin assigns customer, vendor, or admin)\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n- /api/vendor-applications (customer save and submit, admin review)\n\nAuth:\n- Register and login return an access token in the JSON body. Keep it in memory only. The token identifies the user and the device session. Role and permissions are loaded from the database.\n- The refresh token is an httpOnly cookie named refreshToken, path /api/auth. Postman stores it automatically.\n- Each device gets a stable sessionId. Login on another device creates another session.\n- GET /api/auth/sessions lists devices. DELETE /api/auth/sessions/:sessionId revokes one device.\n- GET /api/auth/me, session routes, and POST /api/auth/logout-all send Authorization: Bearer {{accessToken}}.\n- Public registration always creates a customer. An admin assigns vendor or admin with PATCH /api/users/:id/role.\n- Customers save an application with PATCH /api/vendor-applications/me, then submit it for review. There is no separate call to open an empty draft. Status moves draft, submitted, under review, more info required, then approved or rejected. Approval sets the account role to vendor. Document images are http(s) URLs. Trade license and tax details are optional.\n- Customers can browse categories, search, filter, and use the product, store, cart, checkout, payment, order, tracking, review, and wishlist flows.\n- Vendors manage their store, products, variants, inventory, pricing, orders, shipping, coupons, and analytics.\n- Admins manage categories, attributes, units, brands, catalog, vendor approvals, product moderation, orders, coupons, promotions, commission, and platform settings.\n- Category and attribute writes require an admin access token. Assigning a role requires platform settings, which only admins have.\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.",
+    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/auth (register, login, refresh, logout, logout-all, sessions, me)\n- /api/users/:id/role (admin assigns customer, vendor, or admin)\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n- /api/vendor-applications (customer save and submit, admin review)\n- /api/stores (public seller profile; the vendor's own store includes payout)\n\nAuth:\n- Register and login return an access token in the JSON body. Keep it in memory only. The token identifies the user and the device session. Role and permissions are loaded from the database.\n- The refresh token is an httpOnly cookie named refreshToken, path /api/auth. Postman stores it automatically.\n- Each device gets a stable sessionId. Login on another device creates another session.\n- GET /api/auth/sessions lists devices. DELETE /api/auth/sessions/:sessionId revokes one device.\n- GET /api/auth/me, session routes, and POST /api/auth/logout-all send Authorization: Bearer {{accessToken}}.\n- Public registration always creates a customer. An admin assigns vendor or admin with PATCH /api/users/:id/role.\n- Customers save an application with PATCH /api/vendor-applications/me, then submit it for review. There is no separate call to open an empty draft. Status moves draft, submitted, under review, more info required, then approved or rejected. Approval sets the account role to vendor and creates the public store. Payout details are sent with the vendor store update and returned only on that vendor's own store. Document images are http(s) URLs. Trade license and tax details are optional.\n- Customers can browse categories, search, filter, and use the product, store, cart, checkout, payment, order, tracking, review, and wishlist flows.\n- Vendors manage their store, products, variants, inventory, pricing, orders, shipping, coupons, and analytics.\n- Admins manage categories, attributes, units, brands, catalog, vendor approvals, product moderation, orders, coupons, promotions, commission, and platform settings.\n- Category and attribute writes require an admin access token. Assigning a role requires platform settings, which only admins have.\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -55,6 +55,10 @@
     },
     {
       "key": "vendorApplicationId",
+      "value": ""
+    },
+    {
+      "key": "storeSlug",
       "value": ""
     }
   ],
@@ -1044,7 +1048,7 @@
               "raw": "{\n  \"note\": \"Identity and store details look good.\"\n}"
             },
             "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}/approve",
-            "description": "Admin only. under_review → approved, and the applicant's role becomes vendor. The new role is read from the database on the next request."
+            "description": "Admin only. under_review → approved. The applicant's role becomes vendor and a public store is created from the application. The new role is read from the database on the next request."
           }
         },
         {
@@ -1067,6 +1071,87 @@
             },
             "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}/reject",
             "description": "Admin only. under_review → rejected. The account stays a customer. The applicant can update the application and submit again."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stores",
+      "item": [
+        {
+          "name": "List stores",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/stores?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stores"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "categoryId", "value": "{{leafCategoryId}}", "disabled": true },
+                { "key": "sort", "value": "-joinedAt", "disabled": true }
+              ]
+            },
+            "description": "Public. Active seller profiles only: name, logo, rating, product count, order count, sales total, and joined date."
+          }
+        },
+        {
+          "name": "Get store by slug",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/stores/slug/{{storeSlug}}",
+            "description": "Public profile buyers see: name, logo, banner, description, contact, business address, categories, rating, product count, order count, sales total, return policy, shipping policy, and joined date."
+          }
+        },
+        {
+          "name": "Get my store",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 Store fetched', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('storeSlug', body.data.slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/stores/me",
+            "description": "Vendor only. The signed-in seller's profile, including payout details and whether it is active. Public store responses omit payout. Created when the vendor application is approved."
+          }
+        },
+        {
+          "name": "Update my store",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"logo\": \"https://cdn.example.com/stores/ayesha-logo.jpg\",\n  \"banner\": \"https://cdn.example.com/stores/ayesha-banner.jpg\",\n  \"returnPolicy\": \"Returns are accepted within 7 days of delivery.\",\n  \"shippingPolicy\": \"Orders ship within 2 business days.\",\n  \"payout\": {\n    \"method\": \"bank\",\n    \"accountHolderName\": \"Ayesha Rahman\",\n    \"bankName\": \"Dutch-Bangla Bank\",\n    \"branchName\": \"Gulshan\",\n    \"accountNumber\": \"123456789012\",\n    \"routingNumber\": \"090261234\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/stores/me",
+            "description": "Vendor only. One request saves the public profile and the private payout account. Bank payout requires accountHolderName, bankName, branchName, and accountNumber. Mobile payout uses provider and accountNumber instead. Rating, product count, order count, sales total, and joined date are maintained by the platform."
           }
         }
       ]

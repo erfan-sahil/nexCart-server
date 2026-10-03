@@ -22,6 +22,7 @@ import type {
 import { AppError } from '../utils/AppError';
 import { duplicateKeyFields, isDuplicateKeyError } from '../utils/mongoError';
 import { escapeRegex } from '../utils/slugify';
+import { storeService } from './store.service';
 import type {
   ListVendorApplicationsQuery,
   ReviewVendorApplicationInput,
@@ -768,21 +769,40 @@ export const vendorApplicationService = {
     }
 
     const previousRole = user.role;
-
-    if (previousRole !== 'vendor') {
-      user.role = 'vendor';
-      await user.save();
-    }
-
-    recordStatus(application, 'approved', actorId, input.note ?? '');
-    markReviewed(application, actorId);
+    const store = await storeService.ensureForVendor({
+      userId: String(application.userId),
+      name: application.business.storeName,
+      description: application.selling.description,
+      email: application.personal.email,
+      phone: application.personal.phone,
+      address: {
+        line1: application.business.address.line1,
+        line2: application.business.address.line2,
+        city: application.business.address.city,
+        state: application.business.address.state,
+        postalCode: application.business.address.postalCode,
+        country: application.business.address.country,
+      },
+      categoryIds: application.selling.categoryIds.map((categoryId) => String(categoryId)),
+    });
 
     try {
+      if (previousRole !== 'vendor') {
+        user.role = 'vendor';
+        await user.save();
+      }
+
+      recordStatus(application, 'approved', actorId, input.note ?? '');
+      markReviewed(application, actorId);
       await saveApplication(application);
     } catch (error) {
       if (previousRole !== 'vendor') {
         user.role = previousRole;
         await user.save();
+      }
+
+      if (store.created) {
+        await storeService.removeForVendor(String(application.userId));
       }
 
       throw error;
