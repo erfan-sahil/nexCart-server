@@ -1,3 +1,4 @@
+import type { UserDto } from '../types/auth';
 import type { Logger } from '../utils/logger';
 
 declare global {
@@ -5,6 +6,10 @@ declare global {
     interface Request {
       requestId: string;
       log: Logger;
+      auth?: {
+        user: UserDto;
+        sessionId: string;
+      };
     }
   }
 }

@@ -1,5 +1,6 @@
 import type { FilterQuery, Types } from 'mongoose';
 import { MAX_CATEGORY_LEVEL } from '../constants/category';
+import { CategoryAttributeModel } from '../models/categoryAttribute.model';
 import { CategoryModel, type Category } from '../models/category.model';
 import type {
   CategoryDetailDto,
@@ -361,6 +362,7 @@ export const categoryService = {
     }
 
     await category.deleteOne();
+    await CategoryAttributeModel.deleteMany({ categoryId: category._id });
 
     return { id: String(category._id) };
   },

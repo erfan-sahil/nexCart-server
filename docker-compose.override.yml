@@ -1,0 +1,13 @@
+# Loaded automatically by `docker compose up`.
+# Runs the API from live source instead of the production image.
+services:
+  api:
+    build:
+      target: dev
+    image: nexcart-api:dev
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./src:/app/src
+      - ./nodemon.json:/app/nodemon.json:ro
+    command: ['npm', 'run', 'dev', '--', '--legacy-watch']

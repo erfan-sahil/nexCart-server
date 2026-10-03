@@ -1,0 +1,1431 @@
+{
+  "info": {
+    "name": "NexCart API",
+    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/auth (register, login, refresh, logout, logout-all, sessions, me)\n- /api/users/:id/role (admin assigns customer, vendor, or admin)\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n- /api/vendor-applications (customer save and submit, admin review)\n- /api/stores (public seller profile; the vendor's own store includes payout)\n- /api/products (public catalog, vendor products, local image uploads, admin featuring)\n\nAuth:\n- Register and login return an access token in the JSON body. Keep it in memory only. The token identifies the user and the device session. Role and permissions are loaded from the database.\n- The refresh token is an httpOnly cookie named refreshToken, path /api/auth. Postman stores it automatically.\n- Each device gets a stable sessionId. Login on another device creates another session.\n- GET /api/auth/sessions lists devices. DELETE /api/auth/sessions/:sessionId revokes one device.\n- GET /api/auth/me, session routes, and POST /api/auth/logout-all send Authorization: Bearer {{accessToken}}.\n- Public registration always creates a customer. An admin assigns vendor or admin with PATCH /api/users/:id/role.\n- Customers save an application with PATCH /api/vendor-applications/me, then submit it for review. There is no separate call to open an empty draft. Status moves draft, submitted, under review, more info required, then approved or rejected. Approval sets the account role to vendor and creates the public store. Payout details are sent with the vendor store update and returned only on that vendor's own store. Document images are http(s) URLs. Trade license and tax details are optional.\n- Customers can browse categories, search, filter, and use the product, store, cart, checkout, payment, order, tracking, review, and wishlist flows.\n- Vendors manage their store, products, variants, inventory, pricing, orders, shipping, coupons, and analytics.\n- Admins manage categories, attributes, units, brands, catalog, vendor approvals, product moderation, orders, coupons, promotions, commission, and platform settings.\n- Category and attribute writes require an admin access token. Assigning a role requires platform settings, which only admins have.\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.\n- Product status is draft, active, or archived. isPublished can be true only while status is active. Leaving active unpublishes the product. The public catalog returns active published products from active stores.\n- Product attributes are spec values for that category, including inherited assignments. Variant attributes belong on variants and are rejected here. Required spec attributes and at least one image are checked when the product is published.\n- Images are uploaded as multipart form field images (JPEG, PNG, WebP, or GIF, up to 8 files, 5 MB each). Each file is stored locally and receives a stable image id such as img_…. thumbnail is one of those images. A later storage platform can keep the same image id and store its own id behind it.\n- isFeatured is admin only, via PATCH /products/:id/featured, and only a published active product can be featured. Vendors cannot send isFeatured.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    },
+    {
+      "key": "rootCategoryId",
+      "value": ""
+    },
+    {
+      "key": "subCategoryId",
+      "value": ""
+    },
+    {
+      "key": "leafCategoryId",
+      "value": ""
+    },
+    {
+      "key": "colorAttributeId",
+      "value": ""
+    },
+    {
+      "key": "storageAttributeId",
+      "value": ""
+    },
+    {
+      "key": "materialAttributeId",
+      "value": ""
+    },
+    {
+      "key": "featuresAttributeId",
+      "value": ""
+    },
+    {
+      "key": "categorySlug",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "vendorApplicationId",
+      "value": ""
+    },
+    {
+      "key": "storeSlug",
+      "value": ""
+    },
+    {
+      "key": "productId",
+      "value": ""
+    },
+    {
+      "key": "productSlug",
+      "value": ""
+    },
+    {
+      "key": "productImageId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "General",
+      "item": [
+        {
+          "name": "API root",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/",
+            "description": "Returns the API name and the health paths."
+          }
+        },
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/health",
+            "description": "Liveness. Does not check the database."
+          }
+        },
+        {
+          "name": "Ready",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/health/ready",
+            "description": "Readiness. Returns 503 when the process is shutting down or MongoDB is not connected."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Account created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('sessionId', body.data.sessionId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Sahil\",\n  \"lastName\": \"Rahman\",\n  \"email\": \"sahil{{$timestamp}}@example.com\",\n  \"password\": \"Password1\",\n  \"phone\": \"+8801712345678\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/register",
+            "description": "Creates a customer, returns the access token in the body, and sets the refresh token cookie."
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 Signed in', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('sessionId', body.data.sessionId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"sahil@example.com\",\n  \"password\": \"Password1\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login",
+            "description": "Checks email and password. Replaces the access token and rotates the refresh cookie."
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/me",
+            "description": "Current user and the session id of this device. The access token is checked against that live session."
+          }
+        },
+        {
+          "name": "Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 Session refreshed', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('sessionId', body.data.sessionId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/refresh",
+            "description": "Rotates the refresh token for this device. The session id stays the same."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/logout",
+            "description": "Revokes this device session and clears the cookie. Other devices stay signed in."
+          }
+        },
+        {
+          "name": "Logout all",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/logout-all",
+            "description": "Revokes every device session for the signed-in user and clears the cookie."
+          }
+        },
+        {
+          "name": "List sessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/sessions",
+            "description": "Active devices for the signed-in user. The current device has current set to true."
+          }
+        },
+        {
+          "name": "Revoke session",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/sessions/{{sessionId}}",
+            "description": "Revokes one device. Revoking the current session also clears the refresh cookie."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Assign role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"vendor\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/{{userId}}/role",
+            "description": "Admin only. Sets the account to customer, vendor, or admin. An admin cannot change their own role. The access token only identifies the user. The role is read from the database on each request, so the new role applies immediately."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Setup flow",
+      "item": [
+        {
+          "name": "1. Create root category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Category created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('rootCategoryId', body.data.id);",
+                  "pm.collectionVariables.set('categorySlug', body.data.slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Electronics {{$timestamp}}\",\n  \"description\": \"Phones, laptops, and accessories\",\n  \"image\": \"https://cdn.example.com/categories/electronics.jpg\",\n  \"parentId\": null,\n  \"level\": 1,\n  \"isActive\": true,\n  \"sortOrder\": 1\n}"
+            },
+            "url": "{{baseUrl}}/api/categories",
+            "description": "Root category. slug is optional; the API slugifies name when it is omitted. level must be 1 when there is no parent."
+          }
+        },
+        {
+          "name": "2. Create subcategory",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Category created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('subCategoryId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Phones {{$timestamp}}\",\n  \"description\": \"Mobile phones\",\n  \"parentId\": \"{{rootCategoryId}}\",\n  \"level\": 2,\n  \"isActive\": true,\n  \"sortOrder\": 1\n}"
+            },
+            "url": "{{baseUrl}}/api/categories",
+            "description": "Level 2 must use a level 1 parent."
+          }
+        },
+        {
+          "name": "3. Create leaf category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Category created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('leafCategoryId', body.data.id);",
+                  "pm.collectionVariables.set('categorySlug', body.data.slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Smartphones {{$timestamp}}\",\n  \"slug\": \"smartphones-{{$timestamp}}\",\n  \"description\": \"Android and iOS phones\",\n  \"parentId\": \"{{subCategoryId}}\",\n  \"level\": 3,\n  \"isActive\": true,\n  \"sortOrder\": 1\n}"
+            },
+            "url": "{{baseUrl}}/api/categories",
+            "description": "Level 3 is the deepest level. A level 3 category cannot be a parent."
+          }
+        },
+        {
+          "name": "4. Create color attribute (select, variant)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Attribute created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('colorAttributeId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Color {{$timestamp}}\",\n  \"description\": \"Product color\",\n  \"type\": \"select\",\n  \"role\": \"variant\",\n  \"isFilterable\": true,\n  \"isActive\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes",
+            "description": "Creates the shared attribute only. Option lists are set when the attribute is assigned to a category, so each category can use different values. Variant role only allows text, number, or select."
+          }
+        },
+        {
+          "name": "5. Create storage attribute (number, spec)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Attribute created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('storageAttributeId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Storage {{$timestamp}}\",\n  \"description\": \"Internal storage\",\n  \"type\": \"number\",\n  \"role\": \"spec\",\n  \"unit\": \"GB\",\n  \"isFilterable\": true,\n  \"isActive\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes",
+            "description": "unit is allowed only when type is number. Do not send options."
+          }
+        },
+        {
+          "name": "6. Create material attribute (text, spec)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Attribute created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('materialAttributeId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Material {{$timestamp}}\",\n  \"type\": \"text\",\n  \"role\": \"spec\",\n  \"isFilterable\": false,\n  \"isActive\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes"
+          }
+        },
+        {
+          "name": "7. Create features attribute (multiselect, spec)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Attribute created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('featuresAttributeId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Features {{$timestamp}}\",\n  \"type\": \"multiselect\",\n  \"role\": \"spec\",\n  \"isFilterable\": true,\n  \"isActive\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes",
+            "description": "multiselect cannot be a variant. Allowed values are supplied on the category assignment."
+          }
+        },
+        {
+          "name": "8. Assign attributes to leaf category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 Category attributes updated', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"attributes\": [\n    {\n      \"attributeId\": \"{{colorAttributeId}}\",\n      \"isRequired\": true,\n      \"isFilterable\": true,\n      \"sortOrder\": 0,\n      \"options\": [\n        { \"label\": \"Black\", \"value\": \"black\", \"sortOrder\": 0, \"isActive\": true },\n        { \"label\": \"White\", \"sortOrder\": 1, \"isActive\": true },\n        { \"label\": \"Blue\", \"value\": \"blue\", \"sortOrder\": 2 }\n      ]\n    },\n    {\n      \"attributeId\": \"{{storageAttributeId}}\",\n      \"isRequired\": true,\n      \"isFilterable\": true,\n      \"sortOrder\": 1\n    },\n    {\n      \"attributeId\": \"{{materialAttributeId}}\",\n      \"isRequired\": false,\n      \"isFilterable\": false,\n      \"sortOrder\": 2\n    },\n    {\n      \"attributeId\": \"{{featuresAttributeId}}\",\n      \"isRequired\": false,\n      \"isFilterable\": true,\n      \"sortOrder\": 3,\n      \"options\": [\n        { \"label\": \"5G\", \"value\": \"5g\", \"sortOrder\": 0 },\n        { \"label\": \"Wireless charging\", \"value\": \"wireless-charging\", \"sortOrder\": 1 },\n        { \"label\": \"Water resistant\", \"value\": \"water-resistant\", \"sortOrder\": 2 }\n      ]\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}/attributes",
+            "description": "Replaces every assignment on this category. Send attributes: [] to clear them. Each attributeId can appear once. Inactive attributes cannot be assigned. select and multiselect require options for this category. The same attribute can be assigned elsewhere with a different option list and a different isRequired flag. Include an option id to keep an existing option on this category."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "List categories",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/categories?page=1&limit=20&level=1&isActive=true&search=phone&sort=sortOrder",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "categories"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Default 1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "1-100, default 20"
+                },
+                {
+                  "key": "level",
+                  "value": "1",
+                  "description": "1 | 2 | 3",
+                  "disabled": true
+                },
+                {
+                  "key": "parentId",
+                  "value": "{{rootCategoryId}}",
+                  "description": "24-char Mongo id",
+                  "disabled": true
+                },
+                {
+                  "key": "isActive",
+                  "value": "true",
+                  "description": "true | false"
+                },
+                {
+                  "key": "search",
+                  "value": "phone",
+                  "description": "Name search, 1-80 chars",
+                  "disabled": true
+                },
+                {
+                  "key": "sort",
+                  "value": "sortOrder",
+                  "description": "sortOrder | -sortOrder | name | -name | createdAt | -createdAt"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Category tree",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/categories/tree?isActive=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "categories", "tree"],
+              "query": [
+                {
+                  "key": "isActive",
+                  "value": "true",
+                  "description": "true | false. Omit to return every category."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get category by slug",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/categories/slug/{{categorySlug}}",
+            "description": "Slug is lowercase, 2-80 chars, pattern a-z, 0-9, and hyphens."
+          }
+        },
+        {
+          "name": "Get category by id",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}"
+          }
+        },
+        {
+          "name": "Update category",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Flagship phones\",\n  \"description\": \"Updated description\",\n  \"image\": \"https://cdn.example.com/categories/phones.jpg\",\n  \"isActive\": true,\n  \"sortOrder\": 2\n}"
+            },
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}",
+            "description": "At least one field is required. level cannot be patched. To move a category, send a new parentId (or null to make it a root). Children must be moved or deleted first."
+          }
+        },
+        {
+          "name": "List attributes on a category",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}/attributes"
+          }
+        },
+        {
+          "name": "Clear category attributes",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"attributes\": []\n}"
+            },
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}/attributes",
+            "description": "Run this before deleting an attribute that is still assigned."
+          }
+        },
+        {
+          "name": "Delete leaf category",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/categories/{{leafCategoryId}}",
+            "description": "Fails if the category still has children. Delete from the leaf upward.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Delete subcategory",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/categories/{{subCategoryId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Delete root category",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/categories/{{rootCategoryId}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Attributes",
+      "item": [
+        {
+          "name": "List attributes",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/attributes?page=1&limit=20&type=select&role=variant&isActive=true&sort=name",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "attributes"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "1-100, default 20"
+                },
+                {
+                  "key": "type",
+                  "value": "select",
+                  "description": "text | number | boolean | select | multiselect",
+                  "disabled": true
+                },
+                {
+                  "key": "role",
+                  "value": "variant",
+                  "description": "spec | variant",
+                  "disabled": true
+                },
+                {
+                  "key": "isActive",
+                  "value": "true",
+                  "description": "true | false"
+                },
+                {
+                  "key": "search",
+                  "value": "color",
+                  "disabled": true
+                },
+                {
+                  "key": "sort",
+                  "value": "name",
+                  "description": "name | -name | createdAt | -createdAt"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get attribute by id",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/attributes/{{colorAttributeId}}"
+          }
+        },
+        {
+          "name": "Create boolean attribute",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Waterproof {{$timestamp}}\",\n  \"type\": \"boolean\",\n  \"role\": \"spec\",\n  \"isFilterable\": true,\n  \"isActive\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes",
+            "description": "Boolean is an open type: no options, and it cannot be a variant."
+          }
+        },
+        {
+          "name": "Update attribute",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Primary product color\",\n  \"isFilterable\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/attributes/{{colorAttributeId}}",
+            "description": "At least one field is required. Option lists are updated on the category assignment, not here."
+          }
+        },
+        {
+          "name": "Delete attribute",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/attributes/{{materialAttributeId}}",
+            "description": "Fails while the attribute is still assigned to a category. Clear assignments first.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vendor applications",
+      "item": [
+        {
+          "name": "Save application",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Vendor application saved', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('vendorApplicationId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"personal\": {\n    \"fullName\": \"Ayesha Rahman\",\n    \"email\": \"ayesha@example.com\",\n    \"phone\": \"+8801712345678\",\n    \"dateOfBirth\": \"1994-05-12\",\n    \"address\": {\n      \"line1\": \"12 Gulshan Avenue\",\n      \"city\": \"Dhaka\",\n      \"state\": \"Dhaka\",\n      \"postalCode\": \"1212\",\n      \"country\": \"Bangladesh\"\n    }\n  },\n  \"identity\": {\n    \"documentType\": \"nid\",\n    \"documentNumber\": \"1234567890\",\n    \"documentImages\": [\n      \"https://cdn.example.com/kyc/nid-front.jpg\",\n      \"https://cdn.example.com/kyc/nid-back.jpg\"\n    ],\n    \"selfieUrl\": \"https://cdn.example.com/kyc/selfie.jpg\"\n  },\n  \"business\": {\n    \"storeName\": \"Ayesha Home\",\n    \"businessType\": \"individual\",\n    \"address\": {\n      \"line1\": \"12 Gulshan Avenue\",\n      \"city\": \"Dhaka\",\n      \"state\": \"Dhaka\",\n      \"postalCode\": \"1212\",\n      \"country\": \"Bangladesh\"\n    }\n  },\n  \"selling\": {\n    \"categoryIds\": [\"{{leafCategoryId}}\"],\n    \"description\": \"Handmade home goods and small-batch textiles for everyday use.\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/me",
+            "description": "Signed-in customer. The first save creates the application and returns 201. Later saves return 200. Name, email, and phone are prefilled from the account when omitted. The status stays draft until submit. Admins and existing vendors cannot apply."
+          }
+        },
+        {
+          "name": "Get my application",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vendor-applications/me",
+            "description": "The signed-in customer's application, including status history and the latest review note."
+          }
+        },
+        {
+          "name": "Update draft",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business\": {\n    \"tradeLicense\": {\n      \"number\": \"TRAD-10293\",\n      \"documentUrl\": \"https://cdn.example.com/kyc/trade-license.pdf\"\n    },\n    \"tax\": {\n      \"taxId\": \"VAT-556677\",\n      \"documentUrl\": \"\"\n    }\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/me",
+            "description": "Saves more fields on the existing application. Allowed while the status is draft, more info required, or rejected. Send null for tradeLicense or tax to clear that optional block. Submitted and under review applications are locked."
+          }
+        },
+        {
+          "name": "Submit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vendor-applications/me/submit",
+            "description": "Moves draft, more info required, or rejected to submitted. Requires personal details, an identity document with at least one image, store details, one active category, and a business description of at least 20 characters. Selfie, trade license, and tax information stay optional. The applicant must be at least 18."
+          }
+        },
+        {
+          "name": "List applications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/vendor-applications?status=submitted&page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vendor-applications"],
+              "query": [
+                { "key": "status", "value": "submitted" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "includeDrafts", "value": "false", "disabled": true },
+                { "key": "sort", "value": "-submittedAt", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Drafts are hidden unless status=draft or includeDrafts=true. Search matches name, email, phone, and store name."
+          }
+        },
+        {
+          "name": "Get application",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}",
+            "description": "Admin only. Full application, including identity documents and status history."
+          }
+        },
+        {
+          "name": "Start review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Checking identity documents.\"\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}/review",
+            "description": "Admin only. submitted → under_review. note is optional."
+          }
+        },
+        {
+          "name": "Request more info",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Please upload a clearer photo of the NID.\"\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}/request-info",
+            "description": "Admin only. under_review → more_info_required. The applicant can edit and submit again."
+          }
+        },
+        {
+          "name": "Approve",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Identity and store details look good.\"\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}/approve",
+            "description": "Admin only. under_review → approved. The applicant's role becomes vendor and a public store is created from the application. The new role is read from the database on the next request."
+          }
+        },
+        {
+          "name": "Reject",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"The identity document does not match the applicant name.\"\n}"
+            },
+            "url": "{{baseUrl}}/api/vendor-applications/{{vendorApplicationId}}/reject",
+            "description": "Admin only. under_review → rejected. The account stays a customer. The applicant can update the application and submit again."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stores",
+      "item": [
+        {
+          "name": "List stores",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/stores?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "stores"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "categoryId", "value": "{{leafCategoryId}}", "disabled": true },
+                { "key": "sort", "value": "-joinedAt", "disabled": true }
+              ]
+            },
+            "description": "Public. Active seller profiles only: name, logo, rating, product count, order count, sales total, and joined date."
+          }
+        },
+        {
+          "name": "Get store by slug",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/stores/slug/{{storeSlug}}",
+            "description": "Public profile buyers see: name, logo, banner, description, contact, business address, categories, rating, product count, order count, sales total, return policy, shipping policy, and joined date."
+          }
+        },
+        {
+          "name": "Get my store",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 Store fetched', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('storeSlug', body.data.slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/stores/me",
+            "description": "Vendor only. The signed-in seller's profile, including payout details and whether it is active. Public store responses omit payout. Created when the vendor application is approved."
+          }
+        },
+        {
+          "name": "Update my store",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"logo\": \"https://cdn.example.com/stores/ayesha-logo.jpg\",\n  \"banner\": \"https://cdn.example.com/stores/ayesha-banner.jpg\",\n  \"returnPolicy\": \"Returns are accepted within 7 days of delivery.\",\n  \"shippingPolicy\": \"Orders ship within 2 business days.\",\n  \"payout\": {\n    \"method\": \"bank\",\n    \"accountHolderName\": \"Ayesha Rahman\",\n    \"bankName\": \"Dutch-Bangla Bank\",\n    \"branchName\": \"Gulshan\",\n    \"accountNumber\": \"123456789012\",\n    \"routingNumber\": \"090261234\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/stores/me",
+            "description": "Vendor only. One request saves the public profile and the private payout account. Bank payout requires accountHolderName, bankName, branchName, and accountNumber. Mobile payout uses provider and accountNumber instead. Rating, product count, order count, sales total, and joined date are maintained by the platform."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "List products",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/products?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "categoryId", "value": "{{leafCategoryId}}", "disabled": true },
+                { "key": "storeId", "value": "", "disabled": true },
+                { "key": "tag", "value": "wireless", "disabled": true },
+                { "key": "isFeatured", "value": "true", "disabled": true },
+                { "key": "sort", "value": "-createdAt", "disabled": true }
+              ]
+            },
+            "description": "Public. Active published products from active stores. categoryId includes products in that category and its descendants. Image urls are paths such as /uploads/products/img_…. Prefix them with the API origin."
+          }
+        },
+        {
+          "name": "Get product by slug",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "disabled": true
+              }
+            ],
+            "url": "{{baseUrl}}/api/products/slug/{{productSlug}}",
+            "description": "Public when the product is active, published, and the store is active. Send a vendor or admin token to preview a hidden product you are allowed to see."
+          }
+        },
+        {
+          "name": "List my products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/mine?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "mine"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "status", "value": "draft", "disabled": true },
+                { "key": "isPublished", "value": "false", "disabled": true }
+              ]
+            },
+            "description": "Vendor only. Every product in the signed-in store, including drafts."
+          }
+        },
+        {
+          "name": "Create product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Product created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('productId', body.data.id);",
+                  "pm.collectionVariables.set('productSlug', body.data.slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Pulse ANC Headphones {{$timestamp}}\",\n  \"shortDescription\": \"Wireless noise-cancelling headphones\",\n  \"description\": \"Over-ear headphones with a 30 hour battery.\",\n  \"categoryId\": \"{{leafCategoryId}}\",\n  \"tags\": [\"wireless\", \"audio\"],\n  \"attributes\": [\n    {\n      \"attributeId\": \"{{storageAttributeId}}\",\n      \"number\": 128\n    },\n    {\n      \"attributeId\": \"{{materialAttributeId}}\",\n      \"text\": \"Aluminum\"\n    }\n  ],\n  \"status\": \"draft\",\n  \"isPublished\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/products",
+            "description": "Vendor only. storeId comes from the signed-in vendor. categoryId must be one of the store categories or a descendant. Do not send isFeatured. Spec attributes must already be assigned to the category. Publish after at least one image is uploaded."
+          }
+        },
+        {
+          "name": "Add product images",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 Product images added', () => pm.response.to.have.status(200));",
+                  "const image = body.data.images && body.data.images[0];",
+                  "if (image) pm.collectionVariables.set('productImageId', image.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/api/products/{{productId}}/images",
+            "description": "Vendor only. Repeat the images field for more files. The first image becomes the thumbnail when none is set. The response image id is the stable id to store and display."
+          }
+        },
+        {
+          "name": "Set thumbnail",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"imageId\": \"{{productImageId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/products/{{productId}}/thumbnail",
+            "description": "Vendor only. imageId must already be one of the product images."
+          }
+        },
+        {
+          "name": "Publish product",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\",\n  \"isPublished\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/products/{{productId}}",
+            "description": "Vendor only. Publishing requires status active, at least one image, and every required spec attribute. isFeatured is rejected on this route."
+          }
+        },
+        {
+          "name": "Feature product",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isFeatured\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/products/{{productId}}/featured",
+            "description": "Admin only. The product must already be active and published. Vendors cannot change isFeatured."
+          }
+        },
+        {
+          "name": "Moderation list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/manage?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "manage"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "status", "value": "active", "disabled": true },
+                { "key": "isPublished", "value": "true", "disabled": true },
+                { "key": "isFeatured", "value": "true", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Every product, including drafts and products from inactive stores."
+          }
+        },
+        {
+          "name": "Remove product image",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/products/{{productId}}/images/{{productImageId}}",
+            "description": "Vendor only. Deletes the local file. A published product must keep at least one image."
+          }
+        },
+        {
+          "name": "Delete product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/products/{{productId}}",
+            "description": "Vendor only. Deletes the product and its local image files. The store product count drops when the product was published."
+          }
+        }
+      ]
+    }
+  ]
+}

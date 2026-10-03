@@ -1,6 +1,10 @@
 import { Router } from 'express';
+import { Permission } from '../constants/permissions';
+import { attributeController } from '../controllers/attribute.controller';
 import { categoryController } from '../controllers/category.controller';
+import { requirePermissions } from '../middleware/authorize';
 import { validate } from '../middleware/validate';
+import { replaceCategoryAttributesSchema } from '../validators/attribute.validator';
 import {
   categoryIdParamsSchema,
   categorySlugParamsSchema,
@@ -32,8 +36,22 @@ categoryRouter.get(
 
 categoryRouter.post(
   '/',
+  ...requirePermissions(Permission.adminCategories),
   validate({ body: createCategorySchema }),
   categoryController.createCategory,
+);
+
+categoryRouter.get(
+  '/:id/attributes',
+  validate({ params: categoryIdParamsSchema }),
+  attributeController.listCategoryAttributes,
+);
+
+categoryRouter.put(
+  '/:id/attributes',
+  ...requirePermissions(Permission.adminAttributes),
+  validate({ params: categoryIdParamsSchema, body: replaceCategoryAttributesSchema }),
+  attributeController.replaceCategoryAttributes,
 );
 
 categoryRouter.get(
@@ -44,12 +62,14 @@ categoryRouter.get(
 
 categoryRouter.patch(
   '/:id',
+  ...requirePermissions(Permission.adminCategories),
   validate({ params: categoryIdParamsSchema, body: updateCategorySchema }),
   categoryController.updateCategory,
 );
 
 categoryRouter.delete(
   '/:id',
+  ...requirePermissions(Permission.adminCategories),
   validate({ params: categoryIdParamsSchema }),
   categoryController.deleteCategory,
 );
