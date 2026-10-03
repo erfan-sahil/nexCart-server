@@ -4,6 +4,7 @@ import { authRouter } from './auth.routes';
 import { categoryRouter } from './category.routes';
 import { healthRouter } from './health.routes';
 import { userRouter } from './user.routes';
+import { productRouter } from './product.routes';
 import { storeRouter } from './store.routes';
 import { vendorApplicationRouter } from './vendorApplication.routes';
 
@@ -16,3 +17,4 @@ apiRouter.use('/vendor-applications', vendorApplicationRouter);
 apiRouter.use('/stores', storeRouter);
 apiRouter.use('/attributes', attributeRouter);
 apiRouter.use('/categories', categoryRouter);
+apiRouter.use('/products', productRouter);

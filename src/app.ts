@@ -4,6 +4,7 @@ import express from 'express';
 import helmet from 'helmet';
 import { corsOptions } from './config/cors';
 import { env, isProduction } from './config/env';
+import { uploadRoot } from './config/uploads';
 import { errorHandler } from './middleware/errorHandler';
 import {
   rejectMalformedUrl,
@@ -30,6 +31,7 @@ export const createApp = () => {
   app.use(
     helmet({
       contentSecurityPolicy: isProduction,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   );
   app.use(cors(corsOptions));
@@ -40,6 +42,14 @@ export const createApp = () => {
   app.use(requestTimeout);
   app.use(apiLimiter);
   app.use(requestLogger);
+  app.use(
+    '/uploads',
+    express.static(uploadRoot, {
+      index: false,
+      dotfiles: 'deny',
+      maxAge: isProduction ? '7d' : 0,
+    }),
+  );
 
   app.get('/favicon.ico', (_req, res) => {
     res.status(204).end();

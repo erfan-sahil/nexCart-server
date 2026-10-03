@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { appState } from './config/appState';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { env } from './config/env';
+import { ensureUploadDir } from './services/imageStorage';
 import { logger } from './utils/logger';
 
 const app = createApp();
@@ -9,6 +10,7 @@ const host = '0.0.0.0';
 
 const start = async () => {
   await connectDatabase();
+  await ensureUploadDir();
   appState.isReady = true;
 
   const server = app.listen(env.PORT, host, () => {

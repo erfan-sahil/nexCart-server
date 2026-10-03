@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NexCart API",
-    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/auth (register, login, refresh, logout, logout-all, sessions, me)\n- /api/users/:id/role (admin assigns customer, vendor, or admin)\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n- /api/vendor-applications (customer save and submit, admin review)\n- /api/stores (public seller profile; the vendor's own store includes payout)\n\nAuth:\n- Register and login return an access token in the JSON body. Keep it in memory only. The token identifies the user and the device session. Role and permissions are loaded from the database.\n- The refresh token is an httpOnly cookie named refreshToken, path /api/auth. Postman stores it automatically.\n- Each device gets a stable sessionId. Login on another device creates another session.\n- GET /api/auth/sessions lists devices. DELETE /api/auth/sessions/:sessionId revokes one device.\n- GET /api/auth/me, session routes, and POST /api/auth/logout-all send Authorization: Bearer {{accessToken}}.\n- Public registration always creates a customer. An admin assigns vendor or admin with PATCH /api/users/:id/role.\n- Customers save an application with PATCH /api/vendor-applications/me, then submit it for review. There is no separate call to open an empty draft. Status moves draft, submitted, under review, more info required, then approved or rejected. Approval sets the account role to vendor and creates the public store. Payout details are sent with the vendor store update and returned only on that vendor's own store. Document images are http(s) URLs. Trade license and tax details are optional.\n- Customers can browse categories, search, filter, and use the product, store, cart, checkout, payment, order, tracking, review, and wishlist flows.\n- Vendors manage their store, products, variants, inventory, pricing, orders, shipping, coupons, and analytics.\n- Admins manage categories, attributes, units, brands, catalog, vendor approvals, product moderation, orders, coupons, promotions, commission, and platform settings.\n- Category and attribute writes require an admin access token. Assigning a role requires platform settings, which only admins have.\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.",
+    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/auth (register, login, refresh, logout, logout-all, sessions, me)\n- /api/users/:id/role (admin assigns customer, vendor, or admin)\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n- /api/vendor-applications (customer save and submit, admin review)\n- /api/stores (public seller profile; the vendor's own store includes payout)\n- /api/products (public catalog, vendor products, local image uploads, admin featuring)\n\nAuth:\n- Register and login return an access token in the JSON body. Keep it in memory only. The token identifies the user and the device session. Role and permissions are loaded from the database.\n- The refresh token is an httpOnly cookie named refreshToken, path /api/auth. Postman stores it automatically.\n- Each device gets a stable sessionId. Login on another device creates another session.\n- GET /api/auth/sessions lists devices. DELETE /api/auth/sessions/:sessionId revokes one device.\n- GET /api/auth/me, session routes, and POST /api/auth/logout-all send Authorization: Bearer {{accessToken}}.\n- Public registration always creates a customer. An admin assigns vendor or admin with PATCH /api/users/:id/role.\n- Customers save an application with PATCH /api/vendor-applications/me, then submit it for review. There is no separate call to open an empty draft. Status moves draft, submitted, under review, more info required, then approved or rejected. Approval sets the account role to vendor and creates the public store. Payout details are sent with the vendor store update and returned only on that vendor's own store. Document images are http(s) URLs. Trade license and tax details are optional.\n- Customers can browse categories, search, filter, and use the product, store, cart, checkout, payment, order, tracking, review, and wishlist flows.\n- Vendors manage their store, products, variants, inventory, pricing, orders, shipping, coupons, and analytics.\n- Admins manage categories, attributes, units, brands, catalog, vendor approvals, product moderation, orders, coupons, promotions, commission, and platform settings.\n- Category and attribute writes require an admin access token. Assigning a role requires platform settings, which only admins have.\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.\n- Product status is draft, active, or archived. isPublished can be true only while status is active. Leaving active unpublishes the product. The public catalog returns active published products from active stores.\n- Product attributes are spec values for that category, including inherited assignments. Variant attributes belong on variants and are rejected here. Required spec attributes and at least one image are checked when the product is published.\n- Images are uploaded as multipart form field images (JPEG, PNG, WebP, or GIF, up to 8 files, 5 MB each). Each file is stored locally and receives a stable image id such as img_…. thumbnail is one of those images. A later storage platform can keep the same image id and store its own id behind it.\n- isFeatured is admin only, via PATCH /products/:id/featured, and only a published active product can be featured. Vendors cannot send isFeatured.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -59,6 +59,18 @@
     },
     {
       "key": "storeSlug",
+      "value": ""
+    },
+    {
+      "key": "productId",
+      "value": ""
+    },
+    {
+      "key": "productSlug",
+      "value": ""
+    },
+    {
+      "key": "productImageId",
       "value": ""
     }
   ],
@@ -1152,6 +1164,265 @@
             },
             "url": "{{baseUrl}}/api/stores/me",
             "description": "Vendor only. One request saves the public profile and the private payout account. Bank payout requires accountHolderName, bankName, branchName, and accountNumber. Mobile payout uses provider and accountNumber instead. Rating, product count, order count, sales total, and joined date are maintained by the platform."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "List products",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/products?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "categoryId", "value": "{{leafCategoryId}}", "disabled": true },
+                { "key": "storeId", "value": "", "disabled": true },
+                { "key": "tag", "value": "wireless", "disabled": true },
+                { "key": "isFeatured", "value": "true", "disabled": true },
+                { "key": "sort", "value": "-createdAt", "disabled": true }
+              ]
+            },
+            "description": "Public. Active published products from active stores. categoryId includes products in that category and its descendants. Image urls are paths such as /uploads/products/img_…. Prefix them with the API origin."
+          }
+        },
+        {
+          "name": "Get product by slug",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "disabled": true
+              }
+            ],
+            "url": "{{baseUrl}}/api/products/slug/{{productSlug}}",
+            "description": "Public when the product is active, published, and the store is active. Send a vendor or admin token to preview a hidden product you are allowed to see."
+          }
+        },
+        {
+          "name": "List my products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/mine?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "mine"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "status", "value": "draft", "disabled": true },
+                { "key": "isPublished", "value": "false", "disabled": true }
+              ]
+            },
+            "description": "Vendor only. Every product in the signed-in store, including drafts."
+          }
+        },
+        {
+          "name": "Create product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Product created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('productId', body.data.id);",
+                  "pm.collectionVariables.set('productSlug', body.data.slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Pulse ANC Headphones {{$timestamp}}\",\n  \"shortDescription\": \"Wireless noise-cancelling headphones\",\n  \"description\": \"Over-ear headphones with a 30 hour battery.\",\n  \"categoryId\": \"{{leafCategoryId}}\",\n  \"tags\": [\"wireless\", \"audio\"],\n  \"attributes\": [\n    {\n      \"attributeId\": \"{{storageAttributeId}}\",\n      \"number\": 128\n    },\n    {\n      \"attributeId\": \"{{materialAttributeId}}\",\n      \"text\": \"Aluminum\"\n    }\n  ],\n  \"status\": \"draft\",\n  \"isPublished\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/products",
+            "description": "Vendor only. storeId comes from the signed-in vendor. categoryId must be one of the store categories or a descendant. Do not send isFeatured. Spec attributes must already be assigned to the category. Publish after at least one image is uploaded."
+          }
+        },
+        {
+          "name": "Add product images",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 Product images added', () => pm.response.to.have.status(200));",
+                  "const image = body.data.images && body.data.images[0];",
+                  "if (image) pm.collectionVariables.set('productImageId', image.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/api/products/{{productId}}/images",
+            "description": "Vendor only. Repeat the images field for more files. The first image becomes the thumbnail when none is set. The response image id is the stable id to store and display."
+          }
+        },
+        {
+          "name": "Set thumbnail",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"imageId\": \"{{productImageId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/products/{{productId}}/thumbnail",
+            "description": "Vendor only. imageId must already be one of the product images."
+          }
+        },
+        {
+          "name": "Publish product",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\",\n  \"isPublished\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/products/{{productId}}",
+            "description": "Vendor only. Publishing requires status active, at least one image, and every required spec attribute. isFeatured is rejected on this route."
+          }
+        },
+        {
+          "name": "Feature product",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isFeatured\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/products/{{productId}}/featured",
+            "description": "Admin only. The product must already be active and published. Vendors cannot change isFeatured."
+          }
+        },
+        {
+          "name": "Moderation list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/manage?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "manage"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "status", "value": "active", "disabled": true },
+                { "key": "isPublished", "value": "true", "disabled": true },
+                { "key": "isFeatured", "value": "true", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Every product, including drafts and products from inactive stores."
+          }
+        },
+        {
+          "name": "Remove product image",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/products/{{productId}}/images/{{productImageId}}",
+            "description": "Vendor only. Deletes the local file. A published product must keep at least one image."
+          }
+        },
+        {
+          "name": "Delete product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/products/{{productId}}",
+            "description": "Vendor only. Deletes the product and its local image files. The store product count drops when the product was published."
           }
         }
       ]

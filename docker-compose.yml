@@ -21,6 +21,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - product_uploads:/app/uploads
     networks:
       - nexcart
 
@@ -77,6 +79,7 @@ services:
 volumes:
   mongodb_data:
   redis_data:
+  product_uploads:
 
 networks:
   nexcart:

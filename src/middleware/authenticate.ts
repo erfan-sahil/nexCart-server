@@ -22,3 +22,12 @@ export const authenticate = async (req: Request, _res: Response, next: NextFunct
     next(error);
   }
 };
+
+export const authenticateOptional = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.headers.authorization) {
+    next();
+    return;
+  }
+
+  void authenticate(req, res, next);
+};

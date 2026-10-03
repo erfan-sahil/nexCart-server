@@ -33,6 +33,7 @@ ENV PORT=4000
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/package.json ./
 COPY --from=build --chown=node:node /app/dist ./dist
+RUN mkdir -p /app/uploads/products && chown -R node:node /app/uploads
 USER node
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

@@ -50,6 +50,7 @@ const envSchema = z.object({
   AUTH_COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
+  UPLOAD_DIR: z.string().trim().min(1).default('uploads'),
 });
 
 const parsed = envSchema.safeParse(process.env);
