@@ -16,7 +16,13 @@ import { ProductModel, type Product } from '../models/product.model';
 type ProductDocument = HydratedDocument<Product>;
 import { StoreModel } from '../models/store.model';
 import type { AttributeRole, AttributeType } from '../types/attribute';
-import type { ImageProvider, ProductDto, ProductStatus, ProductViewer } from '../types/product';
+import type {
+  ImageProvider,
+  ProductApprovalStatus,
+  ProductDto,
+  ProductStatus,
+  ProductViewer,
+} from '../types/product';
 import { AppError } from '../utils/AppError';
 import { logger } from '../utils/logger';
 import { duplicateKeyFields, isDuplicateKeyError } from '../utils/mongoError';
@@ -61,6 +67,8 @@ type ProductSource = {
   attributes: AttributeSource[];
   tags: string[];
   status: string;
+  approvalStatus: string;
+  reviewNote: string;
   isFeatured: boolean;
   isPublished: boolean;
   ratingSummary: { average: number; count: number };
@@ -86,14 +94,28 @@ const SORTS: Record<ProductSort, Record<string, 1 | -1>> = {
   '-rating': { 'ratingSummary.average': -1 },
 };
 
-const isListed = (status: string, isPublished: boolean) => status === 'active' && isPublished;
+const isListed = (product: { status: string; isPublished: boolean; approvalStatus: string }) =>
+  product.approvalStatus === 'approved' && product.status === 'active' && product.isPublished;
 
 const toStatus = (status: string): ProductStatus => {
-  if (status === 'draft' || status === 'active' || status === 'archived') {
+  if (status === 'active' || status === 'archived') {
     return status;
   }
 
   throw AppError.internal('Stored product status is invalid');
+};
+
+const toApprovalStatus = (status: string): ProductApprovalStatus => {
+  if (
+    status === 'pending' ||
+    status === 'submitted' ||
+    status === 'approved' ||
+    status === 'rejected'
+  ) {
+    return status;
+  }
+
+  throw AppError.internal('Stored product approval status is invalid');
 };
 
 const toProvider = (provider: string): ImageProvider => {
@@ -265,19 +287,15 @@ const resequence = (product: { images: { sortOrder: number }[] }) => {
   });
 };
 
-const assertCanPublish = async (product: ProductSource) => {
-  if (!product.isPublished) {
-    return;
-  }
-
+const assertSellable = async (product: ProductSource) => {
   if (product.status !== 'active') {
-    throw AppError.validation('Only active products can be published');
+    return;
   }
 
   const hasThumbnail = product.images.some((image) => image.id === product.thumbnailId);
 
   if (product.images.length < 1 || !hasThumbnail) {
-    throw AppError.validation('Add at least one image before publishing');
+    throw AppError.validation('Add at least one image');
   }
 
   const assignments = await attributeService.listForCategory(String(product.categoryId));
@@ -287,6 +305,51 @@ const assertCanPublish = async (product: ProductSource) => {
   }
 
   assertRequiredProductAttributes(product.attributes, assignments);
+};
+
+type ImageUpload = {
+  buffer: Buffer;
+  mimeType: string;
+};
+
+const discardImages = async (images: { storageKey: string }[]) => {
+  await Promise.all(
+    images.map((image) => imageStorage.remove(image.storageKey).catch(() => undefined)),
+  );
+};
+
+const storeImages = async (product: ProductDocument, files: ImageUpload[]) => {
+  if (product.images.length + files.length > MAX_PRODUCT_IMAGES) {
+    throw AppError.validation(`A product can have at most ${MAX_PRODUCT_IMAGES} images`);
+  }
+
+  const saved = [];
+
+  try {
+    for (const file of files) {
+      saved.push(await imageStorage.save(file));
+    }
+
+    for (const image of saved) {
+      product.images.push({
+        imageId: image.id,
+        provider: image.provider,
+        storageKey: image.storageKey,
+        url: image.url,
+        mimeType: image.mimeType,
+        size: image.size,
+        alt: '',
+        sortOrder: product.images.length,
+      });
+    }
+
+    resequence(product);
+    syncThumbnail(product);
+    return saved;
+  } catch (error) {
+    await discardImages(saved);
+    throw error;
+  }
 };
 
 const adjustProductCount = async (storeId: Types.ObjectId, delta: number) => {
@@ -343,6 +406,8 @@ const readProduct = (product: ProductDocument): ProductSource => {
     })),
     tags: [...(plain.tags ?? [])],
     status: plain.status,
+    approvalStatus: plain.approvalStatus ?? 'pending',
+    reviewNote: plain.reviewNote ?? '',
     isFeatured: plain.isFeatured,
     isPublished: plain.isPublished,
     ratingSummary: {
@@ -481,6 +546,8 @@ const mapProducts = async (products: ProductSource[]): Promise<ProductDto[]> => 
       }),
       tags: [...product.tags],
       status: toStatus(product.status),
+      approvalStatus: toApprovalStatus(product.approvalStatus),
+      reviewNote: product.reviewNote,
       isFeatured: product.isFeatured,
       isPublished: product.isPublished,
       ratingSummary: {
@@ -505,7 +572,7 @@ const present = async (product: ProductDocument) => {
 
 const ensureVisible = async (product: ProductDocument, viewer?: ProductViewer) => {
   const store = await StoreModel.findById(product.storeId).select('userId isActive');
-  const visible = isListed(product.status, product.isPublished) && Boolean(store?.isActive);
+  const visible = isListed(product) && Boolean(store?.isActive);
 
   if (visible) {
     return;
@@ -570,7 +637,7 @@ const emptyPage = (query: PageQuery) => ({
 });
 
 const publishState = (
-  current: { status: string; isPublished: boolean },
+  current: { status: string; isPublished: boolean; approvalStatus: string },
   input: { status?: ProductStatus; isPublished?: boolean },
 ) => {
   const nextStatus = input.status ?? toStatus(current.status);
@@ -580,6 +647,10 @@ const publishState = (
     throw AppError.validation('Only active products can be published');
   }
 
+  if (input.isPublished === true && current.approvalStatus !== 'approved') {
+    throw AppError.validation('This product must be approved before it can be shown');
+  }
+
   if (nextStatus !== 'active') {
     nextPublished = false;
   }
@@ -587,12 +658,22 @@ const publishState = (
   return { nextStatus, nextPublished };
 };
 
+const assertVendorCanChange = (product: { approvalStatus: string }) => {
+  if (product.approvalStatus === 'submitted') {
+    throw AppError.conflict('This product is waiting for admin approval');
+  }
+};
+
 export const productService = {
-  async create(userId: string, input: CreateProductInput) {
+  async create(userId: string, input: CreateProductInput, files: ImageUpload[]) {
+    if (files.length < 1) {
+      throw AppError.validation('Choose at least one image');
+    }
+
     const store = await findVendorStore(userId);
     await assertCategory(input.categoryId, store.categoryIds);
     const { nextStatus, nextPublished } = publishState(
-      { status: 'draft', isPublished: false },
+      { status: 'active', isPublished: false, approvalStatus: 'pending' },
       input,
     );
     const slug = await resolveSlug(input.slug, input.name);
@@ -606,6 +687,8 @@ export const productService = {
       description: input.description ?? '',
       tags: uniqueTags(input.tags ?? []),
       status: nextStatus,
+      approvalStatus: 'pending',
+      reviewNote: '',
       isPublished: nextPublished,
       isFeatured: false,
       images: [],
@@ -613,17 +696,18 @@ export const productService = {
       ratingSummary: { average: 0, count: 0 },
     });
 
-    await applyAttributes(product, input.attributes);
-    const source = readProduct(product);
-    await assertCanPublish(source);
+    const saved = await storeImages(product, files);
 
     try {
+      await applyAttributes(product, input.attributes);
+      await assertSellable(readProduct(product));
       await product.save();
     } catch (error) {
+      await discardImages(saved);
       throw mapDuplicate(error);
     }
 
-    if (isListed(product.status, product.isPublished)) {
+    if (isListed(product)) {
       await adjustProductCount(store._id, 1);
     }
 
@@ -632,7 +716,8 @@ export const productService = {
 
   async update(userId: string, productId: string, input: UpdateProductInput) {
     const product = await findOwnedProduct(userId, productId);
-    const wasListed = isListed(product.status, product.isPublished);
+    assertVendorCanChange(product);
+    const wasListed = isListed(product);
 
     if (input.name !== undefined) {
       product.name = input.name;
@@ -672,7 +757,7 @@ export const productService = {
     product.isPublished = nextPublished;
     syncThumbnail(product);
 
-    await assertCanPublish(readProduct(product));
+    await assertSellable(readProduct(product));
 
     try {
       await product.save();
@@ -680,7 +765,7 @@ export const productService = {
       throw mapDuplicate(error);
     }
 
-    const listed = isListed(product.status, product.isPublished);
+    const listed = isListed(product);
     await adjustProductCount(product.storeId, Number(listed) - Number(wasListed));
 
     return present(product);
@@ -688,7 +773,7 @@ export const productService = {
 
   async remove(userId: string, productId: string) {
     const product = await findOwnedProduct(userId, productId);
-    const wasListed = isListed(product.status, product.isPublished);
+    const wasListed = isListed(product);
     const images = product.images.map((image) => ({
       provider: image.provider,
       storageKey: image.storageKey,
@@ -715,38 +800,13 @@ export const productService = {
     }
 
     const product = await findOwnedProduct(userId, productId);
-
-    if (product.images.length + files.length > MAX_PRODUCT_IMAGES) {
-      throw AppError.validation(`A product can have at most ${MAX_PRODUCT_IMAGES} images`);
-    }
-
-    const saved = [];
+    assertVendorCanChange(product);
+    const saved = await storeImages(product, files);
 
     try {
-      for (const file of files) {
-        saved.push(await imageStorage.save(file));
-      }
-
-      for (const image of saved) {
-        product.images.push({
-          imageId: image.id,
-          provider: image.provider,
-          storageKey: image.storageKey,
-          url: image.url,
-          mimeType: image.mimeType,
-          size: image.size,
-          alt: '',
-          sortOrder: product.images.length,
-        });
-      }
-
-      resequence(product);
-      syncThumbnail(product);
       await product.save();
     } catch (error) {
-      await Promise.all(
-        saved.map((image) => imageStorage.remove(image.storageKey).catch(() => undefined)),
-      );
+      await discardImages(saved);
       throw error;
     }
 
@@ -755,6 +815,7 @@ export const productService = {
 
   async removeImage(userId: string, productId: string, imageId: string) {
     const product = await findOwnedProduct(userId, productId);
+    assertVendorCanChange(product);
     const index = product.images.findIndex((image) => image.imageId === imageId);
     const image = product.images[index];
 
@@ -770,7 +831,7 @@ export const productService = {
     product.images.splice(index, 1);
     resequence(product);
     syncThumbnail(product);
-    await assertCanPublish(readProduct(product));
+    await assertSellable(readProduct(product));
     await product.save();
     await deleteStoredImage(removed);
 
@@ -779,6 +840,7 @@ export const productService = {
 
   async setThumbnail(userId: string, productId: string, imageId: string) {
     const product = await findOwnedProduct(userId, productId);
+    assertVendorCanChange(product);
     const image = product.images.find((item) => item.imageId === imageId);
 
     if (!image) {
@@ -791,6 +853,81 @@ export const productService = {
     return present(product);
   },
 
+  async submit(userId: string, productId: string) {
+    const product = await findOwnedProduct(userId, productId);
+
+    if (product.approvalStatus !== 'pending' && product.approvalStatus !== 'rejected') {
+      throw AppError.conflict('Only a new or rejected product can be submitted');
+    }
+
+    if (product.status !== 'active') {
+      throw AppError.validation('Archived products cannot be submitted');
+    }
+
+    await assertSellable(readProduct(product));
+    product.approvalStatus = 'submitted';
+    product.reviewNote = '';
+    product.isPublished = false;
+    product.isFeatured = false;
+    await product.save();
+
+    return present(product);
+  },
+
+  async approve(productId: string, note?: string) {
+    const product = await ProductModel.findById(productId);
+
+    if (!product) {
+      throw AppError.notFound('Product not found');
+    }
+
+    if (product.approvalStatus !== 'submitted') {
+      throw AppError.conflict('Only a submitted product can be approved');
+    }
+
+    if (product.status !== 'active') {
+      throw AppError.validation('Archived products cannot be approved');
+    }
+
+    await assertSellable(readProduct(product));
+    const wasListed = isListed(product);
+    product.approvalStatus = 'approved';
+    product.isPublished = true;
+    product.reviewNote = note ?? '';
+    await product.save();
+
+    if (!wasListed && isListed(product)) {
+      await adjustProductCount(product.storeId, 1);
+    }
+
+    return present(product);
+  },
+
+  async reject(productId: string, note: string) {
+    const product = await ProductModel.findById(productId);
+
+    if (!product) {
+      throw AppError.notFound('Product not found');
+    }
+
+    if (product.approvalStatus !== 'submitted') {
+      throw AppError.conflict('Only a submitted product can be rejected');
+    }
+
+    const wasListed = isListed(product);
+    product.approvalStatus = 'rejected';
+    product.isPublished = false;
+    product.isFeatured = false;
+    product.reviewNote = note;
+    await product.save();
+
+    if (wasListed) {
+      await adjustProductCount(product.storeId, -1);
+    }
+
+    return present(product);
+  },
+
   async setFeatured(productId: string, isFeatured: boolean) {
     const product = await ProductModel.findById(productId);
 
@@ -798,8 +935,8 @@ export const productService = {
       throw AppError.notFound('Product not found');
     }
 
-    if (isFeatured && !isListed(product.status, product.isPublished)) {
-      throw AppError.validation('Only published active products can be featured');
+    if (isFeatured && !isListed(product)) {
+      throw AppError.validation('Only an approved visible product can be featured');
     }
 
     product.isFeatured = isFeatured;
@@ -810,6 +947,7 @@ export const productService = {
 
   async listPublic(query: ListPublicProductsQuery) {
     const filter: FilterQuery<Product> = {
+      approvalStatus: 'approved',
       status: 'active',
       isPublished: true,
     };
@@ -859,6 +997,10 @@ export const productService = {
       filter.status = query.status;
     }
 
+    if (query.approvalStatus) {
+      filter.approvalStatus = query.approvalStatus;
+    }
+
     if (query.isPublished !== undefined) {
       filter.isPublished = query.isPublished;
     }
@@ -883,6 +1025,10 @@ export const productService = {
 
     if (query.status) {
       filter.status = query.status;
+    }
+
+    if (query.approvalStatus) {
+      filter.approvalStatus = query.approvalStatus;
     }
 
     if (query.isPublished !== undefined) {

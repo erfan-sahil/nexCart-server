@@ -1,8 +1,14 @@
-import type { IMAGE_PROVIDERS, PRODUCT_STATUSES } from '../constants/product';
+import type {
+  IMAGE_PROVIDERS,
+  PRODUCT_APPROVAL_STATUSES,
+  PRODUCT_STATUSES,
+} from '../constants/product';
 import type { AttributeRole, AttributeType } from './attribute';
 import type { UserRole } from './auth';
 
 export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
+
+export type ProductApprovalStatus = (typeof PRODUCT_APPROVAL_STATUSES)[number];
 
 export type ImageProvider = (typeof IMAGE_PROVIDERS)[number];
 
@@ -61,6 +67,8 @@ export type ProductDto = {
   attributes: ProductAttributeDto[];
   tags: string[];
   status: ProductStatus;
+  approvalStatus: ProductApprovalStatus;
+  reviewNote: string;
   isFeatured: boolean;
   isPublished: boolean;
   ratingSummary: {

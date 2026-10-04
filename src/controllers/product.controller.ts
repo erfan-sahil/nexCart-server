@@ -5,11 +5,13 @@ import { AppError } from '../utils/AppError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendCreated, sendPaginated, sendSuccess } from '../utils/sendResponse';
 import type {
+  ApproveProductInput,
   CreateProductInput,
   FeatureProductInput,
   ListManageProductsQuery,
   ListMineProductsQuery,
   ListPublicProductsQuery,
+  RejectProductInput,
   ThumbnailInput,
   UpdateProductInput,
 } from '../validators/product.validator';
@@ -98,7 +100,11 @@ const getProduct = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const createProduct = asyncHandler(async (req: Request, res: Response) => {
-  const product = await productService.create(actorId(req), req.body as CreateProductInput);
+  const product = await productService.create(
+    actorId(req),
+    req.body as CreateProductInput,
+    imageUploads(req),
+  );
 
   sendCreated(res, product, 'Product created');
 });
@@ -150,6 +156,26 @@ const setThumbnail = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, product, { message: 'Product thumbnail updated' });
 });
 
+const submitProduct = asyncHandler(async (req: Request, res: Response) => {
+  const product = await productService.submit(actorId(req), routeParam(req.params.id));
+
+  sendSuccess(res, product, { message: 'Product submitted for approval' });
+});
+
+const approveProduct = asyncHandler(async (req: Request, res: Response) => {
+  const body = req.body as ApproveProductInput;
+  const product = await productService.approve(routeParam(req.params.id), body.note);
+
+  sendSuccess(res, product, { message: 'Product approved' });
+});
+
+const rejectProduct = asyncHandler(async (req: Request, res: Response) => {
+  const body = req.body as RejectProductInput;
+  const product = await productService.reject(routeParam(req.params.id), body.note);
+
+  sendSuccess(res, product, { message: 'Product rejected' });
+});
+
 const featureProduct = asyncHandler(async (req: Request, res: Response) => {
   const body = req.body as FeatureProductInput;
   const product = await productService.setFeatured(routeParam(req.params.id), body.isFeatured);
@@ -169,5 +195,8 @@ export const productController = {
   addImages,
   removeImage,
   setThumbnail,
+  submitProduct,
+  approveProduct,
+  rejectProduct,
   featureProduct,
 };
