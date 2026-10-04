@@ -20,9 +20,11 @@ import type {
   ImageProvider,
   ProductApprovalStatus,
   ProductDto,
+  ProductOfferDto,
   ProductStatus,
   ProductViewer,
 } from '../types/product';
+import { variantService } from './variant.service';
 import { AppError } from '../utils/AppError';
 import { logger } from '../utils/logger';
 import { duplicateKeyFields, isDuplicateKeyError } from '../utils/mongoError';
@@ -450,6 +452,7 @@ const mapProducts = async (products: ProductSource[]): Promise<ProductDto[]> => 
     product.attributes.flatMap((attribute) => attribute.optionIds),
   );
 
+  const offers = await variantService.offersFor(products.map((product) => String(product._id)));
   const [stores, categories, attributes, optionRows] = await Promise.all([
     StoreModel.find({ _id: { $in: storeIds } })
       .select('name slug')
@@ -519,6 +522,7 @@ const mapProducts = async (products: ProductSource[]): Promise<ProductDto[]> => 
       description: product.description,
       images,
       thumbnail: images.find((image) => image.id === product.thumbnailId) ?? null,
+      offer: offers.get(String(product._id)) ?? emptyOffer(),
       attributes: product.attributes.map((attribute) => {
         const meta = attributesById.get(String(attribute.attributeId));
         const type = meta ? toAttributeType(meta.type) : 'text';
@@ -559,6 +563,8 @@ const mapProducts = async (products: ProductSource[]): Promise<ProductDto[]> => 
     };
   });
 };
+
+const emptyOffer = (): ProductOfferDto => variantService.emptyOffer();
 
 const present = async (product: ProductDocument) => {
   const [dto] = await mapProducts([readProduct(product)]);
@@ -743,6 +749,7 @@ export const productService = {
       const store = await findVendorStore(userId);
       await assertCategory(input.categoryId, store.categoryIds);
       product.categoryId = new Types.ObjectId(input.categoryId);
+      await variantService.assertMatchesCategory(product._id, input.categoryId);
     }
 
     if (input.attributes !== undefined) {
@@ -758,6 +765,10 @@ export const productService = {
     syncThumbnail(product);
 
     await assertSellable(readProduct(product));
+
+    if (nextPublished) {
+      await variantService.assertSellable(String(product._id));
+    }
 
     try {
       await product.save();
@@ -779,6 +790,7 @@ export const productService = {
       storageKey: image.storageKey,
     }));
 
+    await variantService.removeForProduct(product._id);
     await product.deleteOne();
 
     if (wasListed) {
@@ -833,6 +845,7 @@ export const productService = {
     syncThumbnail(product);
     await assertSellable(readProduct(product));
     await product.save();
+    await variantService.detachImage(product._id, imageId);
     await deleteStoredImage(removed);
 
     return present(product);
@@ -865,6 +878,7 @@ export const productService = {
     }
 
     await assertSellable(readProduct(product));
+    await variantService.assertSellable(String(product._id));
     product.approvalStatus = 'submitted';
     product.reviewNote = '';
     product.isPublished = false;
@@ -890,6 +904,7 @@ export const productService = {
     }
 
     await assertSellable(readProduct(product));
+    await variantService.assertSellable(String(product._id));
     const wasListed = isListed(product);
     product.approvalStatus = 'approved';
     product.isPublished = true;

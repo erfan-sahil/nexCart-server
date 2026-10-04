@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Permission } from '../constants/permissions';
 import { productController } from '../controllers/product.controller';
+import { variantController } from '../controllers/variant.controller';
 import { authenticateOptional } from '../middleware/authenticate';
 import { requirePermissions } from '../middleware/authorize';
 import { parseProductPayload } from '../middleware/parseProductPayload';
@@ -20,6 +21,12 @@ import {
   thumbnailSchema,
   updateProductSchema,
 } from '../validators/product.validator';
+import {
+  createVariantSchema,
+  listVariantsQuerySchema,
+  updateVariantSchema,
+  variantParamsSchema,
+} from '../validators/variant.validator';
 
 export const productRouter = Router();
 
@@ -121,6 +128,41 @@ productRouter.post(
   ...requirePermissions(Permission.adminProductModeration),
   validate({ params: productIdParamsSchema, body: rejectProductSchema }),
   productController.rejectProduct,
+);
+
+productRouter.get(
+  '/:id/variants',
+  authenticateOptional,
+  validate({ params: productIdParamsSchema, query: listVariantsQuerySchema }),
+  variantController.list,
+);
+
+productRouter.post(
+  '/:id/variants',
+  ...requirePermissions(Permission.vendorVariants),
+  validate({ params: productIdParamsSchema, body: createVariantSchema }),
+  variantController.createVariant,
+);
+
+productRouter.get(
+  '/:id/variants/:variantId',
+  authenticateOptional,
+  validate({ params: variantParamsSchema }),
+  variantController.getVariant,
+);
+
+productRouter.patch(
+  '/:id/variants/:variantId',
+  ...requirePermissions(Permission.vendorVariants),
+  validate({ params: variantParamsSchema, body: updateVariantSchema }),
+  variantController.updateVariant,
+);
+
+productRouter.delete(
+  '/:id/variants/:variantId',
+  ...requirePermissions(Permission.vendorVariants),
+  validate({ params: variantParamsSchema }),
+  variantController.deleteVariant,
 );
 
 productRouter.patch(

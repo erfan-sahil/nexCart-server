@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NexCart API",
-    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/auth (register, login, refresh, logout, logout-all, sessions, me)\n- /api/users/:id/role (admin assigns customer, vendor, or admin)\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n- /api/vendor-applications (customer save and submit, admin review)\n- /api/stores (public seller profile; the vendor's own store includes payout)\n- /api/products (public catalog, vendor products, local image uploads, admin featuring)\n\nAuth:\n- Register and login return an access token in the JSON body. Keep it in memory only. The token identifies the user and the device session. Role and permissions are loaded from the database.\n- The refresh token is an httpOnly cookie named refreshToken, path /api/auth. Postman stores it automatically.\n- Each device gets a stable sessionId. Login on another device creates another session.\n- GET /api/auth/sessions lists devices. DELETE /api/auth/sessions/:sessionId revokes one device.\n- GET /api/auth/me, session routes, and POST /api/auth/logout-all send Authorization: Bearer {{accessToken}}.\n- Public registration always creates a customer. An admin assigns vendor or admin with PATCH /api/users/:id/role.\n- Customers save an application with PATCH /api/vendor-applications/me, then submit it for review. There is no separate call to open an empty draft. Status moves draft, submitted, under review, more info required, then approved or rejected. Approval sets the account role to vendor and creates the public store. Payout details are sent with the vendor store update and returned only on that vendor's own store. Document images are http(s) URLs. Trade license and tax details are optional.\n- Customers can browse categories, search, filter, and use the product, store, cart, checkout, payment, order, tracking, review, and wishlist flows.\n- Vendors manage their store, products, variants, inventory, pricing, orders, shipping, coupons, and analytics.\n- Admins manage categories, attributes, units, brands, catalog, vendor approvals, product moderation, orders, coupons, promotions, commission, and platform settings.\n- Category and attribute writes require an admin access token. Assigning a role requires platform settings, which only admins have.\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.\n- Product status is active or archived. approvalStatus starts as pending. The vendor submits it, and shoppers see it only after an admin approves it. Approval sets isPublished to true. A vendor can hide an approved product again with isPublished false. Archiving also hides it. The public catalog returns approved, active, published products from active stores.\n- Product attributes are spec values for that category, including inherited assignments. Variant attributes belong on variants and are rejected here. Required spec attributes and at least one image are required for every active product.\n- Images are uploaded as multipart form field images (JPEG, PNG, WebP, or GIF, up to 8 files, 5 MB each). Each file is stored locally and receives a stable image id such as img_…. thumbnail is one of those images. A later storage platform can keep the same image id and store its own id behind it.\n- isFeatured is admin only, via PATCH /products/:id/featured, and only a published active product can be featured. Vendors cannot send isFeatured.",
+    "description": "Every route currently mounted by the backend.\n\nImport in Postman (Import → File). baseUrl defaults to http://localhost:4000.\n\nRoutes:\n- GET /\n- GET /api/health\n- GET /api/health/ready\n- /api/auth (register, login, refresh, logout, logout-all, sessions, me)\n- /api/users/:id/role (admin assigns customer, vendor, or admin)\n- /api/categories (list, tree, slug, create, get, update, delete, list/replace attributes)\n- /api/attributes (list, create, get, update, delete)\n- /api/vendor-applications (customer save and submit, admin review)\n- /api/stores (public seller profile; the vendor's own store includes payout)\n- /api/products (public catalog, vendor products, local image uploads, admin featuring)\n- /api/products/:id/variants (sellable SKUs: price, stock, and variant options)\n\nAuth:\n- Register and login return an access token in the JSON body. Keep it in memory only. The token identifies the user and the device session. Role and permissions are loaded from the database.\n- The refresh token is an httpOnly cookie named refreshToken, path /api/auth. Postman stores it automatically.\n- Each device gets a stable sessionId. Login on another device creates another session.\n- GET /api/auth/sessions lists devices. DELETE /api/auth/sessions/:sessionId revokes one device.\n- GET /api/auth/me, session routes, and POST /api/auth/logout-all send Authorization: Bearer {{accessToken}}.\n- Public registration always creates a customer. An admin assigns vendor or admin with PATCH /api/users/:id/role.\n- Customers save an application with PATCH /api/vendor-applications/me, then submit it for review. There is no separate call to open an empty draft. Status moves draft, submitted, under review, more info required, then approved or rejected. Approval sets the account role to vendor and creates the public store. Payout details are sent with the vendor store update and returned only on that vendor's own store. Document images are http(s) URLs. Trade license and tax details are optional.\n- Customers can browse categories, search, filter, and use the product, store, cart, checkout, payment, order, tracking, review, and wishlist flows.\n- Vendors manage their store, products, variants, inventory, pricing, orders, shipping, coupons, and analytics.\n- Admins manage categories, attributes, units, brands, catalog, vendor approvals, product moderation, orders, coupons, promotions, commission, and platform settings.\n- Category and attribute writes require an admin access token. Assigning a role requires platform settings, which only admins have.\n\nRun Setup flow top to bottom. Create requests save ids into collection variables for the requests that follow.\n\nBody rules:\n- Category levels are 1 (root), 2 (sub), 3 (leaf). Only level 1 can omit parentId.\n- Attribute type: text | number | boolean | select | multiselect.\n- Attribute role: spec | variant. Variant only allows text, number, or select.\n- Attribute definitions do not store option lists. The same attribute can have different values on each category.\n- On PUT /categories/:id/attributes, select and multiselect need at least one option. text, number, and boolean cannot have options.\n- isRequired is set per category assignment.\n- unit is only valid on number attributes.\n- PUT /categories/:id/attributes replaces the full assignment list. A child category inherits a parent's assignment, including its options, until it assigns that attribute itself.\n- Product status is active or archived. approvalStatus starts as pending. The vendor submits it, and shoppers see it only after an admin approves it. Approval sets isPublished to true. A vendor can hide an approved product again with isPublished false. Archiving also hides it. The public catalog returns approved, active, published products from active stores.\n- Product attributes are spec values for that category, including inherited assignments. Variant attributes belong on variants and are rejected here. Required spec attributes and at least one image are required for every active product.\n- A variant is one sellable SKU. It stores price, optional compareAtPrice, stock, an optional product image id, and every variant option assigned to the category. Options must be unique per product. The first variant is the default. Submit and approval require one active variant. Public lists return active variants only.\n- Images are uploaded as multipart form field images (JPEG, PNG, WebP, or GIF, up to 8 files, 5 MB each). Each file is stored locally and receives a stable image id such as img_…. thumbnail is one of those images. A later storage platform can keep the same image id and store its own id behind it.\n- isFeatured is admin only, via PATCH /products/:id/featured, and only a published active product can be featured. Vendors cannot send isFeatured.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -71,6 +71,10 @@
     },
     {
       "key": "productImageId",
+      "value": ""
+    },
+    {
+      "key": "variantId",
       "value": ""
     }
   ],
@@ -1190,7 +1194,7 @@
                 { "key": "sort", "value": "-createdAt", "disabled": true }
               ]
             },
-            "description": "Public. Active published products from active stores. categoryId includes products in that category and its descendants. Image urls are paths such as /uploads/products/img_…. Prefix them with the API origin."
+            "description": "Public. Active published products from active stores. categoryId includes products in that category and its descendants. offer summarizes active variants: minPrice, maxPrice, inStock, variantCount, and defaultVariantId. Image urls are paths such as /uploads/products/img_…. Prefix them with the API origin."
           }
         },
         {
@@ -1487,7 +1491,123 @@
               }
             ],
             "url": "{{baseUrl}}/api/products/{{productId}}",
-            "description": "Vendor only. Deletes the product and its local image files. The store product count drops when the product was published."
+            "description": "Vendor only. Deletes the product, its variants, and its local image files. The store product count drops when the product was published."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Product variants",
+      "item": [
+        {
+          "name": "List variants",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/variants?page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "{{productId}}", "variants"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "50" },
+                { "key": "status", "value": "active", "disabled": true },
+                { "key": "sort", "value": "price", "disabled": true }
+              ]
+            },
+            "description": "Public for an approved, active, published product: active variants only. The vendor who owns the product, or an admin, also sees archived variants. status is applied for those viewers. Each product response includes offer with minPrice, maxPrice, inStock, variantCount, and defaultVariantId."
+          }
+        },
+        {
+          "name": "Create variant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Variant created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('variantId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"SKU-{{$timestamp}}\",\n  \"price\": 1999,\n  \"compareAtPrice\": 2499,\n  \"stock\": 12,\n  \"imageId\": \"{{productImageId}}\",\n  \"attributes\": [],\n  \"status\": \"active\"\n}"
+            },
+            "url": "{{baseUrl}}/api/products/{{productId}}/variants",
+            "description": "Vendor only. Set every variant-role attribute assigned to the product category. Use text, number, or one optionId. Omit attributes when the category has no variant options; that product can then have only one variant. SKU is unique across the catalog. compareAtPrice must be higher than price. The first variant becomes the default."
+          }
+        },
+        {
+          "name": "Get variant",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "disabled": true
+              }
+            ],
+            "url": "{{baseUrl}}/api/products/{{productId}}/variants/{{variantId}}",
+            "description": "Public when the product is listed and the variant is active. The owning vendor or an admin can read an archived variant."
+          }
+        },
+        {
+          "name": "Update variant",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 1899,\n  \"stock\": 8,\n  \"isDefault\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/products/{{productId}}/variants/{{variantId}}",
+            "description": "Vendor only. Send the fields to change. isDefault true moves the default to this variant. A product that is published or awaiting approval must keep one active variant. Blocked while the product is submitted."
+          }
+        },
+        {
+          "name": "Delete variant",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/products/{{productId}}/variants/{{variantId}}",
+            "description": "Vendor only. Deleting the default promotes the next variant. A published or submitted product must keep one active variant."
           }
         }
       ]

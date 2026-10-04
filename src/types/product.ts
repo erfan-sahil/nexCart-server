@@ -52,6 +52,14 @@ export type ProductSummaryRef = {
   slug: string;
 };
 
+export type ProductOfferDto = {
+  minPrice: number | null;
+  maxPrice: number | null;
+  inStock: boolean;
+  variantCount: number;
+  defaultVariantId: string | null;
+};
+
 export type ProductDto = {
   id: string;
   storeId: string;
@@ -65,6 +73,7 @@ export type ProductDto = {
   images: ProductImageDto[];
   thumbnail: ProductImageDto | null;
   attributes: ProductAttributeDto[];
+  offer: ProductOfferDto;
   tags: string[];
   status: ProductStatus;
   approvalStatus: ProductApprovalStatus;
