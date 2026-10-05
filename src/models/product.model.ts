@@ -1,5 +1,5 @@
 import { Schema, model, type InferSchemaType, type Types } from 'mongoose';
-import { IMAGE_PROVIDERS, PRODUCT_STATUSES } from '../constants/product';
+import { IMAGE_PROVIDERS, PRODUCT_APPROVAL_STATUSES, PRODUCT_STATUSES } from '../constants/product';
 
 const productImageSchema = new Schema(
   {
@@ -155,7 +155,19 @@ const productSchema = new Schema(
       type: String,
       required: true,
       enum: PRODUCT_STATUSES,
-      default: 'draft',
+      default: 'active',
+    },
+    approvalStatus: {
+      type: String,
+      required: true,
+      enum: PRODUCT_APPROVAL_STATUSES,
+      default: 'pending',
+    },
+    reviewNote: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: '',
     },
     isFeatured: {
       type: Boolean,
@@ -180,10 +192,11 @@ const productSchema = new Schema(
 );
 
 productSchema.index({ storeId: 1, createdAt: -1 });
-productSchema.index({ storeId: 1, status: 1, isPublished: 1, createdAt: -1 });
-productSchema.index({ categoryId: 1, status: 1, isPublished: 1, createdAt: -1 });
-productSchema.index({ status: 1, isPublished: 1, isFeatured: 1, createdAt: -1 });
-productSchema.index({ tags: 1, status: 1, isPublished: 1 });
+productSchema.index({ storeId: 1, approvalStatus: 1, createdAt: -1 });
+productSchema.index({ approvalStatus: 1, status: 1, isPublished: 1, createdAt: -1 });
+productSchema.index({ categoryId: 1, approvalStatus: 1, status: 1, isPublished: 1, createdAt: -1 });
+productSchema.index({ approvalStatus: 1, status: 1, isPublished: 1, isFeatured: 1, createdAt: -1 });
+productSchema.index({ tags: 1, approvalStatus: 1, status: 1, isPublished: 1 });
 
 export type Product = InferSchemaType<typeof productSchema> & {
   _id: Types.ObjectId;

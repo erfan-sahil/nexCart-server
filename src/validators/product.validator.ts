@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { PRODUCT_IMAGE_ID, PRODUCT_STATUSES } from '../constants/product';
+import {
+  PRODUCT_APPROVAL_STATUSES,
+  PRODUCT_IMAGE_ID,
+  PRODUCT_STATUSES,
+} from '../constants/product';
 import { slugify } from '../utils/slugify';
 
 const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
@@ -49,7 +53,6 @@ const productFields = {
   tags: z.array(tagSchema).max(20).optional(),
   attributes: z.array(attributeValueSchema).max(100).optional(),
   status: z.enum(PRODUCT_STATUSES).optional(),
-  isPublished: z.boolean().optional(),
 };
 
 const refineProduct = (
@@ -127,13 +130,26 @@ export const updateProductSchema = z
     tags: productFields.tags,
     attributes: productFields.attributes,
     status: productFields.status,
-    isPublished: productFields.isPublished,
+    isPublished: z.boolean().optional(),
   })
   .strict()
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
     message: 'At least one field is required',
   })
   .superRefine((value, ctx) => refineProduct(value, ctx));
+
+export const approveProductSchema = z
+  .object({
+    note: z.string().trim().max(1000).optional(),
+  })
+  .strict()
+  .default({});
+
+export const rejectProductSchema = z
+  .object({
+    note: z.string().trim().min(5).max(1000),
+  })
+  .strict();
 
 export const featureProductSchema = z
   .object({
@@ -165,6 +181,7 @@ export const listPublicProductsQuerySchema = z.object({
 export const listMineProductsQuerySchema = z.object({
   ...listFields,
   status: z.enum(PRODUCT_STATUSES).optional(),
+  approvalStatus: z.enum(PRODUCT_APPROVAL_STATUSES).optional(),
   isPublished: booleanQuery.optional(),
 });
 
@@ -173,6 +190,7 @@ export const listManageProductsQuerySchema = z.object({
   categoryId: objectIdSchema.optional(),
   storeId: objectIdSchema.optional(),
   status: z.enum(PRODUCT_STATUSES).optional(),
+  approvalStatus: z.enum(PRODUCT_APPROVAL_STATUSES).optional(),
   isPublished: booleanQuery.optional(),
   isFeatured: booleanQuery.optional(),
 });
@@ -193,6 +211,8 @@ export const productImageParamsSchema = z.object({
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type FeatureProductInput = z.infer<typeof featureProductSchema>;
+export type ApproveProductInput = z.infer<typeof approveProductSchema>;
+export type RejectProductInput = z.infer<typeof rejectProductSchema>;
 export type ThumbnailInput = z.infer<typeof thumbnailSchema>;
 export type ListPublicProductsQuery = z.infer<typeof listPublicProductsQuerySchema>;
 export type ListMineProductsQuery = z.infer<typeof listMineProductsQuerySchema>;

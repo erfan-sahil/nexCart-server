@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import { Permission } from '../constants/permissions';
 import { productController } from '../controllers/product.controller';
+import { variantController } from '../controllers/variant.controller';
 import { authenticateOptional } from '../middleware/authenticate';
 import { requirePermissions } from '../middleware/authorize';
+import { parseProductPayload } from '../middleware/parseProductPayload';
 import { uploadProductImages } from '../middleware/uploadProductImages';
 import { validate } from '../middleware/validate';
 import {
+  approveProductSchema,
   createProductSchema,
   featureProductSchema,
   listManageProductsQuerySchema,
@@ -14,9 +17,16 @@ import {
   productIdParamsSchema,
   productImageParamsSchema,
   productSlugParamsSchema,
+  rejectProductSchema,
   thumbnailSchema,
   updateProductSchema,
 } from '../validators/product.validator';
+import {
+  createVariantSchema,
+  listVariantsQuerySchema,
+  updateVariantSchema,
+  variantParamsSchema,
+} from '../validators/variant.validator';
 
 export const productRouter = Router();
 
@@ -50,6 +60,8 @@ productRouter.get(
 productRouter.post(
   '/',
   ...requirePermissions(Permission.vendorProducts),
+  uploadProductImages,
+  parseProductPayload,
   validate({ body: createProductSchema }),
   productController.createProduct,
 );
@@ -95,6 +107,62 @@ productRouter.patch(
   ...requirePermissions(Permission.vendorProducts),
   validate({ params: productIdParamsSchema, body: thumbnailSchema }),
   productController.setThumbnail,
+);
+
+productRouter.post(
+  '/:id/submit',
+  ...requirePermissions(Permission.vendorProducts),
+  validate({ params: productIdParamsSchema }),
+  productController.submitProduct,
+);
+
+productRouter.post(
+  '/:id/approve',
+  ...requirePermissions(Permission.adminProductModeration),
+  validate({ params: productIdParamsSchema, body: approveProductSchema }),
+  productController.approveProduct,
+);
+
+productRouter.post(
+  '/:id/reject',
+  ...requirePermissions(Permission.adminProductModeration),
+  validate({ params: productIdParamsSchema, body: rejectProductSchema }),
+  productController.rejectProduct,
+);
+
+productRouter.get(
+  '/:id/variants',
+  authenticateOptional,
+  validate({ params: productIdParamsSchema, query: listVariantsQuerySchema }),
+  variantController.list,
+);
+
+productRouter.post(
+  '/:id/variants',
+  ...requirePermissions(Permission.vendorVariants),
+  validate({ params: productIdParamsSchema, body: createVariantSchema }),
+  variantController.createVariant,
+);
+
+productRouter.get(
+  '/:id/variants/:variantId',
+  authenticateOptional,
+  validate({ params: variantParamsSchema }),
+  variantController.getVariant,
+);
+
+productRouter.patch(
+  '/:id/variants/:variantId',
+  ...requirePermissions(Permission.vendorVariants),
+  validate({ params: variantParamsSchema, body: updateVariantSchema }),
+  variantController.updateVariant,
+);
+
+productRouter.delete(
+  '/:id/variants/:variantId',
+  ...requirePermissions(Permission.vendorVariants),
+  validate({ params: variantParamsSchema }),
+  variantController.deleteVariant,
 );
 
 productRouter.patch(

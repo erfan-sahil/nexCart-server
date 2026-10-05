@@ -1,4 +1,6 @@
-export const PRODUCT_STATUSES = ['draft', 'active', 'archived'] as const;
+export const PRODUCT_STATUSES = ['active', 'archived'] as const;
+
+export const PRODUCT_APPROVAL_STATUSES = ['pending', 'submitted', 'approved', 'rejected'] as const;
 
 export const IMAGE_PROVIDERS = ['local'] as const;
 

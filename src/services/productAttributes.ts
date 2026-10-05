@@ -161,5 +161,5 @@ export const assertRequiredProductAttributes = (
   }
 
   const names = missing.map((assignment) => assignment.attribute.name).join(', ');
-  throw AppError.validation(`Add required details before publishing: ${names}`);
+  throw AppError.validation(`Add required details: ${names}`);
 };

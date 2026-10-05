@@ -1,8 +1,14 @@
-import type { IMAGE_PROVIDERS, PRODUCT_STATUSES } from '../constants/product';
+import type {
+  IMAGE_PROVIDERS,
+  PRODUCT_APPROVAL_STATUSES,
+  PRODUCT_STATUSES,
+} from '../constants/product';
 import type { AttributeRole, AttributeType } from './attribute';
 import type { UserRole } from './auth';
 
 export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
+
+export type ProductApprovalStatus = (typeof PRODUCT_APPROVAL_STATUSES)[number];
 
 export type ImageProvider = (typeof IMAGE_PROVIDERS)[number];
 
@@ -46,6 +52,14 @@ export type ProductSummaryRef = {
   slug: string;
 };
 
+export type ProductOfferDto = {
+  minPrice: number | null;
+  maxPrice: number | null;
+  inStock: boolean;
+  variantCount: number;
+  defaultVariantId: string | null;
+};
+
 export type ProductDto = {
   id: string;
   storeId: string;
@@ -59,8 +73,11 @@ export type ProductDto = {
   images: ProductImageDto[];
   thumbnail: ProductImageDto | null;
   attributes: ProductAttributeDto[];
+  offer: ProductOfferDto;
   tags: string[];
   status: ProductStatus;
+  approvalStatus: ProductApprovalStatus;
+  reviewNote: string;
   isFeatured: boolean;
   isPublished: boolean;
   ratingSummary: {
