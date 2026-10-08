@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { authController } from '../controllers/auth.controller';
+import { profileController } from '../controllers/profile.controller';
 import { authenticate } from '../middleware/authenticate';
 import { authLimiter } from '../middleware/rateLimiter';
 import { validate } from '../middleware/validate';
 import { loginSchema, registerSchema, sessionIdParamsSchema } from '../validators/auth.validator';
+import { profileUpdateSchema } from '../validators/profile.validator';
 
 export const authRouter = Router();
 
@@ -32,3 +34,10 @@ authRouter.delete(
 );
 
 authRouter.get('/me', authenticate, authController.me);
+
+authRouter.patch(
+  '/me',
+  authenticate,
+  validate({ body: profileUpdateSchema }),
+  profileController.updateMe,
+);

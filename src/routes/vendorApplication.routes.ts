@@ -3,6 +3,8 @@ import { Permission } from '../constants/permissions';
 import { vendorApplicationController } from '../controllers/vendorApplication.controller';
 import { authenticate } from '../middleware/authenticate';
 import { requirePermissions } from '../middleware/authorize';
+import { uploadApplicationFile } from '../middleware/uploadApplicationFile';
+import { uploadSelfie } from '../middleware/uploadSelfie';
 import { validate } from '../middleware/validate';
 import {
   listVendorApplicationsQuerySchema,
@@ -21,6 +23,20 @@ vendorApplicationRouter.patch(
   authenticate,
   validate({ body: updateVendorApplicationSchema }),
   vendorApplicationController.updateMine,
+);
+
+vendorApplicationRouter.post(
+  '/me/selfie',
+  authenticate,
+  uploadSelfie,
+  vendorApplicationController.uploadMineSelfie,
+);
+
+vendorApplicationRouter.post(
+  '/me/files',
+  authenticate,
+  uploadApplicationFile,
+  vendorApplicationController.uploadMineFile,
 );
 
 vendorApplicationRouter.post('/me/submit', authenticate, vendorApplicationController.submitMine);

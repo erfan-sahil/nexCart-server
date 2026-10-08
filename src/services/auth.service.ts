@@ -13,6 +13,7 @@ import { AppError } from '../utils/AppError';
 import { duplicateKeyFields } from '../utils/mongoError';
 import { hashPassword, verifyPassword } from '../utils/password';
 import type { LoginInput, RegisterInput } from '../validators/auth.validator';
+import type { UpdateProfileInput } from '../validators/profile.validator';
 import {
   passwordChangedAfter,
   signAccessToken,
@@ -333,6 +334,33 @@ export const authService = {
       id: sessionId,
       current: sessionId === currentSessionId,
     };
+  },
+
+  async updateProfile(userId: string, input: UpdateProfileInput) {
+    requireActiveUser(await UserModel.findById(userId));
+
+    const names = {
+      firstName: input.firstName,
+      lastName: input.lastName,
+    };
+    const update = input.phone
+      ? { $set: { firstName: names.firstName, lastName: names.lastName, phone: input.phone } }
+      : { $set: names, $unset: { phone: 1 } };
+
+    try {
+      const user = await UserModel.findByIdAndUpdate(userId, update, {
+        new: true,
+        runValidators: true,
+      });
+
+      if (!user) {
+        throw AppError.unauthorized('Session is no longer valid. Please sign in again.');
+      }
+
+      return toUserDto(user);
+    } catch (error) {
+      throw registerConflict(error);
+    }
   },
 
   async resolveAccessToken(token: string) {
