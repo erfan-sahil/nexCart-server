@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { imageStorage } from '../services/imageStorage';
 import { vendorApplicationService } from '../services/vendorApplication.service';
 import { AppError } from '../utils/AppError';
 import { asyncHandler } from '../utils/asyncHandler';
@@ -37,6 +38,53 @@ const updateMine = asyncHandler(async (req: Request, res: Response) => {
     statusCode: result.created ? 201 : 200,
     message: result.created ? 'Vendor application saved' : 'Vendor application updated',
   });
+});
+
+const absoluteUploadUrl = (req: Request, url: string) => {
+  const host = req.get('host');
+
+  if (!host) {
+    throw AppError.internal('Could not build the file URL');
+  }
+
+  return `${req.protocol}://${host}${url}`;
+};
+
+const uploadMineSelfie = asyncHandler(async (req: Request, res: Response) => {
+  const file = req.file;
+
+  if (!file || !Buffer.isBuffer(file.buffer)) {
+    throw AppError.validation('A selfie image is required');
+  }
+
+  const mimeType = file.mimetype.split(';')[0]?.trim().toLowerCase() ?? '';
+  const stored = await imageStorage.save({ buffer: file.buffer, mimeType });
+
+  sendSuccess(
+    res,
+    { url: absoluteUploadUrl(req, stored.url) },
+    { statusCode: 201, message: 'Selfie uploaded' },
+  );
+});
+
+const uploadMineFile = asyncHandler(async (req: Request, res: Response) => {
+  const file = req.file;
+
+  if (!file || !Buffer.isBuffer(file.buffer)) {
+    throw AppError.validation('A file is required');
+  }
+
+  const mimeType = file.mimetype.split(';')[0]?.trim().toLowerCase() ?? '';
+  const stored = await imageStorage.saveApplicationFile({
+    buffer: file.buffer,
+    mimeType,
+  });
+
+  sendSuccess(
+    res,
+    { url: absoluteUploadUrl(req, stored.url) },
+    { statusCode: 201, message: 'File uploaded' },
+  );
 });
 
 const submitMine = asyncHandler(async (req: Request, res: Response) => {
@@ -105,6 +153,8 @@ const rejectApplication = asyncHandler(async (req: Request, res: Response) => {
 export const vendorApplicationController = {
   getMine,
   updateMine,
+  uploadMineSelfie,
+  uploadMineFile,
   submitMine,
   listApplications,
   getApplication,

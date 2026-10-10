@@ -21,6 +21,17 @@ export type StoredImage = {
 };
 
 const LOCAL_KEY = /^products\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
+const APPLICATION_KEY = /^applications\/file_[a-f0-9]{24}\.(jpg|png|webp|gif|pdf)$/;
+
+const APPLICATION_EXTENSIONS = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'application/pdf': '.pdf',
+} as const;
+
+type ApplicationMimeType = keyof typeof APPLICATION_EXTENSIONS;
 
 const createImageId = () => `img_${randomBytes(12).toString('hex')}`;
 
@@ -39,6 +50,24 @@ const hasSignature = (mimeType: ProductImageMimeType, buffer: Buffer) => {
   }
 
   return buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
+};
+
+const isApplicationMimeType = (value: string): value is ApplicationMimeType =>
+  value in APPLICATION_EXTENSIONS;
+
+const applicationPath = (storageKey: string) => {
+  if (!APPLICATION_KEY.test(storageKey)) {
+    throw AppError.internal('Stored file path is invalid');
+  }
+
+  const root = path.resolve(uploadRoot);
+  const target = path.resolve(root, storageKey);
+
+  if (!target.startsWith(`${root}${path.sep}`)) {
+    throw AppError.internal('Stored file path is invalid');
+  }
+
+  return target;
 };
 
 const localPath = (storageKey: string) => {
@@ -99,6 +128,45 @@ export const imageStorage = {
       url: `/uploads/${storageKey}`,
       mimeType,
       size: file.buffer.length,
+    };
+  },
+
+  async saveApplicationFile(file: { buffer: Buffer; mimeType: string }) {
+    const mimeType = file.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
+
+    if (!isApplicationMimeType(mimeType)) {
+      throw AppError.unsupportedMedia('Only JPEG, PNG, WebP, GIF, and PDF files are allowed');
+    }
+
+    if (file.buffer.length < 1 || file.buffer.length > MAX_PRODUCT_IMAGE_BYTES) {
+      throw AppError.payloadTooLarge('Each file must be 5 MB or smaller');
+    }
+
+    const matches =
+      mimeType === 'application/pdf'
+        ? file.buffer.subarray(0, 4).toString('ascii') === '%PDF'
+        : hasSignature(mimeType, file.buffer);
+
+    if (!matches) {
+      throw AppError.validation('File content does not match its type');
+    }
+
+    const id = `file_${randomBytes(12).toString('hex')}`;
+    const storageKey = `applications/${id}${APPLICATION_EXTENSIONS[mimeType]}`;
+    const target = applicationPath(storageKey);
+
+    await mkdir(path.join(uploadRoot, 'applications'), { recursive: true });
+
+    try {
+      await writeFile(target, file.buffer);
+    } catch (error) {
+      await unlink(target).catch(() => undefined);
+      throw error;
+    }
+
+    return {
+      url: `/uploads/${storageKey}`,
+      mimeType,
     };
   },
 
