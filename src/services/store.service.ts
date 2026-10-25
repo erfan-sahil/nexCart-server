@@ -1,6 +1,6 @@
 import { Types, type FilterQuery, type HydratedDocument } from 'mongoose';
 import { CategoryModel } from '../models/category.model';
-import { StoreModel, type Store } from '../models/store.model';
+import { StoreModel, listedStoreFilter, type Store } from '../models/store.model';
 import { StorePayoutModel, type StorePayout } from '../models/storePayout.model';
 import type {
   PublicStoreDto,
@@ -127,6 +127,7 @@ const toVendorDto = (
 ): VendorStoreDto => ({
   ...toPublicDto(store, categories),
   isActive: store.isActive,
+  isSuspended: Boolean(store.suspendedAt),
   payout: payout ? toPayoutDto(payout) : null,
 });
 
@@ -360,8 +361,15 @@ export const storeService = {
     await StoreModel.deleteOne({ userId });
   },
 
+  async setSuspendedForOwner(userId: string, suspended: boolean) {
+    await StoreModel.updateMany(
+      { userId },
+      { $set: { suspendedAt: suspended ? new Date() : null } },
+    );
+  },
+
   async listPublic(query: ListStoresQuery) {
-    const filter: FilterQuery<Store> = { isActive: true };
+    const filter: FilterQuery<Store> = { ...listedStoreFilter };
 
     if (query.categoryId) {
       filter.categoryIds = query.categoryId;
@@ -386,7 +394,7 @@ export const storeService = {
   },
 
   async getPublicBySlug(slug: string) {
-    const store = await StoreModel.findOne({ slug, isActive: true }).lean();
+    const store = await StoreModel.findOne({ slug, ...listedStoreFilter }).lean();
 
     if (!store) {
       throw AppError.notFound('Store not found');
@@ -398,7 +406,7 @@ export const storeService = {
   },
 
   async getPublicById(id: string) {
-    const store = await StoreModel.findOne({ _id: id, isActive: true }).lean();
+    const store = await StoreModel.findOne({ _id: id, ...listedStoreFilter }).lean();
 
     if (!store) {
       throw AppError.notFound('Store not found');

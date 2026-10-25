@@ -14,7 +14,7 @@ import { CategoryModel } from '../models/category.model';
 import { ProductModel, type Product } from '../models/product.model';
 
 type ProductDocument = HydratedDocument<Product>;
-import { StoreModel } from '../models/store.model';
+import { StoreModel, isStoreListed, listedStoreFilter } from '../models/store.model';
 import type { AttributeRole, AttributeType } from '../types/attribute';
 import type {
   ImageProvider,
@@ -577,8 +577,8 @@ const present = async (product: ProductDocument) => {
 };
 
 const ensureVisible = async (product: ProductDocument, viewer?: ProductViewer) => {
-  const store = await StoreModel.findById(product.storeId).select('userId isActive');
-  const visible = isListed(product) && Boolean(store?.isActive);
+  const store = await StoreModel.findById(product.storeId).select('userId isActive suspendedAt');
+  const visible = isListed(product) && isStoreListed(store);
 
   if (visible) {
     return;
@@ -968,19 +968,19 @@ export const productService = {
     };
 
     if (query.storeId) {
-      const store = await StoreModel.findById(query.storeId).select('_id isActive');
+      const store = await StoreModel.findById(query.storeId).select('_id isActive suspendedAt');
 
       if (!store) {
         throw AppError.notFound('Store not found');
       }
 
-      if (!store.isActive) {
+      if (!isStoreListed(store)) {
         return emptyPage(query);
       }
 
       filter.storeId = store._id;
     } else {
-      const storeIds = await StoreModel.find({ isActive: true }).distinct('_id');
+      const storeIds = await StoreModel.find(listedStoreFilter).distinct('_id');
       filter.storeId = { $in: storeIds };
     }
 

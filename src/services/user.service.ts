@@ -8,6 +8,7 @@ import { duplicateKeyFields, isDuplicateKeyError } from '../utils/mongoError';
 import { escapeRegex } from '../utils/slugify';
 import type { ListUsersQuery, UpdateUserInput } from '../validators/user.validator';
 import { toUserDto } from './auth.service';
+import { storeService } from './store.service';
 
 const SORTS = {
   createdAt: { createdAt: 1 },
@@ -199,6 +200,13 @@ export const userService = {
 
       if (previousStatus !== 'suspended' && updated.status === 'suspended') {
         await revokeSessions(updated._id);
+      }
+
+      if (updated.role === 'vendor') {
+        await storeService.setSuspendedForOwner(
+          String(updated._id),
+          updated.status === 'suspended',
+        );
       }
 
       return toUserDto(updated);
