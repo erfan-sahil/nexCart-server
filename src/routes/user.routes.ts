@@ -3,13 +3,28 @@ import { Permission } from '../constants/permissions';
 import { userController } from '../controllers/user.controller';
 import { requirePermissions } from '../middleware/authorize';
 import { validate } from '../middleware/validate';
-import { updateUserRoleSchema, userIdParamsSchema } from '../validators/user.validator';
+import {
+  listUsersQuerySchema,
+  updateUserSchema,
+  userIdQuerySchema,
+} from '../validators/user.validator';
 
 export const userRouter = Router();
 
+const adminUsers = requirePermissions(Permission.adminUsers);
+
+userRouter.get('/', ...adminUsers, validate({ query: listUsersQuerySchema }), userController.list);
+
 userRouter.patch(
-  '/:id/role',
-  ...requirePermissions(Permission.adminPlatformSettings),
-  validate({ params: userIdParamsSchema, body: updateUserRoleSchema }),
-  userController.updateRole,
+  '/',
+  ...adminUsers,
+  validate({ query: userIdQuerySchema, body: updateUserSchema }),
+  userController.update,
+);
+
+userRouter.delete(
+  '/',
+  ...adminUsers,
+  validate({ query: userIdQuerySchema }),
+  userController.remove,
 );

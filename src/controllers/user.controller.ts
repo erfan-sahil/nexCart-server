@@ -2,23 +2,59 @@ import type { Request, Response } from 'express';
 import { userService } from '../services/user.service';
 import { AppError } from '../utils/AppError';
 import { asyncHandler } from '../utils/asyncHandler';
-import { sendSuccess } from '../utils/sendResponse';
-import type { UpdateUserRoleInput } from '../validators/user.validator';
+import { sendPaginated, sendSuccess } from '../utils/sendResponse';
+import type { ListUsersQuery, UpdateUserInput } from '../validators/user.validator';
 
-const routeParam = (value: string | string[] | undefined) =>
-  (Array.isArray(value) ? value[0] : value) ?? '';
-
-const updateRole = asyncHandler(async (req: Request, res: Response) => {
+const actorId = (req: Request) => {
   if (!req.auth) {
     throw AppError.unauthorized();
   }
 
-  const body = req.body as UpdateUserRoleInput;
-  const user = await userService.updateRole(req.auth.user.id, routeParam(req.params.id), body.role);
+  return req.auth.user.id;
+};
 
-  sendSuccess(res, { user }, { message: 'Role updated' });
+const queryId = (req: Request) => {
+  const id = (req.query as { id?: string }).id;
+  return id ?? '';
+};
+
+const list = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query as unknown as ListUsersQuery;
+
+  if (query.id) {
+    const user = await userService.getById(query.id);
+    sendSuccess(res, { user }, { message: 'User fetched' });
+    return;
+  }
+
+  const result = await userService.list(query);
+
+  sendPaginated(
+    res,
+    result.items,
+    {
+      page: result.page,
+      limit: result.limit,
+      total: result.total,
+    },
+    'Users fetched',
+  );
+});
+
+const update = asyncHandler(async (req: Request, res: Response) => {
+  const user = await userService.update(actorId(req), queryId(req), req.body as UpdateUserInput);
+
+  sendSuccess(res, { user }, { message: 'User updated' });
+});
+
+const remove = asyncHandler(async (req: Request, res: Response) => {
+  const result = await userService.remove(actorId(req), queryId(req));
+
+  sendSuccess(res, result, { message: 'User deleted' });
 });
 
 export const userController = {
-  updateRole,
+  list,
+  update,
+  remove,
 };
