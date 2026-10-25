@@ -44,6 +44,12 @@ export const userIdQuerySchema = z.object({
   id: objectIdSchema,
 });
 
+export const accountStatusSchema = z
+  .object({
+    status: z.enum(USER_STATUSES),
+  })
+  .strict();
+
 export const updateUserSchema = z
   .object({
     email: emailSchema.optional(),
@@ -60,4 +66,5 @@ export const updateUserSchema = z
 
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type UserIdQuery = z.infer<typeof userIdQuerySchema>;
+export type AccountStatusInput = z.infer<typeof accountStatusSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;

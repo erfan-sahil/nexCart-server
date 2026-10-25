@@ -4,6 +4,7 @@ import { userController } from '../controllers/user.controller';
 import { requirePermissions } from '../middleware/authorize';
 import { validate } from '../middleware/validate';
 import {
+  accountStatusSchema,
   listUsersQuerySchema,
   updateUserSchema,
   userIdQuerySchema,
@@ -25,6 +26,20 @@ userRouter.patch(
   ...adminUsers,
   validate({ query: userIdQuerySchema, body: updateUserSchema }),
   userController.updateUser,
+);
+
+userRouter.patch(
+  '/buyers/status',
+  ...adminUsers,
+  validate({ query: userIdQuerySchema, body: accountStatusSchema }),
+  userController.setBuyerStatus,
+);
+
+userRouter.patch(
+  '/vendors/status',
+  ...adminUsers,
+  validate({ query: userIdQuerySchema, body: accountStatusSchema }),
+  userController.setVendorStatus,
 );
 
 userRouter.delete(

@@ -6,7 +6,11 @@ import { VendorApplicationModel } from '../models/vendorApplication.model';
 import { AppError } from '../utils/AppError';
 import { duplicateKeyFields, isDuplicateKeyError } from '../utils/mongoError';
 import { escapeRegex } from '../utils/slugify';
-import type { ListUsersQuery, UpdateUserInput } from '../validators/user.validator';
+import type {
+  AccountStatusInput,
+  ListUsersQuery,
+  UpdateUserInput,
+} from '../validators/user.validator';
 import { toUserDto } from './auth.service';
 import { storeService } from './store.service';
 
@@ -68,6 +72,19 @@ const assertNoOwnedStore = async (userId: User['_id'], message: string) => {
 
 const revokeSessions = (userId: User['_id']) =>
   AuthSessionModel.updateMany({ userId, revokedAt: null }, { $set: { revokedAt: new Date() } });
+
+const syncAccountStatus = async (
+  user: Pick<User, '_id' | 'role' | 'status'>,
+  previousStatus: User['status'],
+) => {
+  if (previousStatus !== 'suspended' && user.status === 'suspended') {
+    await revokeSessions(user._id);
+  }
+
+  if (user.role === 'vendor') {
+    await storeService.setSuspendedForOwner(String(user._id), user.status === 'suspended');
+  }
+};
 
 const findUser = async (userId: string) => {
   const user = await UserModel.findById(userId);
@@ -198,16 +215,7 @@ export const userService = {
         throw AppError.notFound('User not found');
       }
 
-      if (previousStatus !== 'suspended' && updated.status === 'suspended') {
-        await revokeSessions(updated._id);
-      }
-
-      if (updated.role === 'vendor') {
-        await storeService.setSuspendedForOwner(
-          String(updated._id),
-          updated.status === 'suspended',
-        );
-      }
+      await syncAccountStatus(updated, previousStatus);
 
       return toUserDto(updated);
     } catch (error) {
@@ -217,6 +225,42 @@ export const userService = {
 
       throw mapAccountDuplicate(error);
     }
+  },
+
+  async setStatus(
+    actorId: string,
+    userId: string,
+    role: 'customer' | 'vendor',
+    input: AccountStatusInput,
+  ) {
+    if (actorId === userId) {
+      throw AppError.forbidden('You cannot change your own status');
+    }
+
+    const user = await findUser(userId);
+
+    if (user.role !== role) {
+      throw AppError.notFound(role === 'customer' ? 'Buyer not found' : 'Vendor not found');
+    }
+
+    if (user.status === input.status) {
+      return toUserDto(user);
+    }
+
+    const previousStatus = user.status;
+    const updated = await UserModel.findByIdAndUpdate(
+      user._id,
+      { $set: { status: input.status } },
+      { new: true, runValidators: true },
+    );
+
+    if (!updated) {
+      throw AppError.notFound(role === 'customer' ? 'Buyer not found' : 'Vendor not found');
+    }
+
+    await syncAccountStatus(updated, previousStatus);
+
+    return toUserDto(updated);
   },
 
   async remove(actorId: string, userId: string) {
