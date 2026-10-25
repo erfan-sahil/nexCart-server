@@ -59,4 +59,5 @@ export const updateUserSchema = z
   });
 
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
+export type UserIdQuery = z.infer<typeof userIdQuerySchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;

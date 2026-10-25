@@ -13,18 +13,23 @@ export const userRouter = Router();
 
 const adminUsers = requirePermissions(Permission.adminUsers);
 
-userRouter.get('/', ...adminUsers, validate({ query: listUsersQuerySchema }), userController.list);
+userRouter.get(
+  '/',
+  ...adminUsers,
+  validate({ query: listUsersQuerySchema }),
+  userController.listUsers,
+);
 
 userRouter.patch(
   '/',
   ...adminUsers,
   validate({ query: userIdQuerySchema, body: updateUserSchema }),
-  userController.update,
+  userController.updateUser,
 );
 
 userRouter.delete(
   '/',
   ...adminUsers,
   validate({ query: userIdQuerySchema }),
-  userController.remove,
+  userController.deleteUser,
 );

@@ -313,7 +313,7 @@
               "raw": "{\n  \"firstName\": \"Amina\",\n  \"lastName\": \"Rahman\",\n  \"email\": \"amina@example.com\",\n  \"phone\": \"+8801712345678\",\n  \"role\": \"customer\",\n  \"status\": \"active\"\n}"
             },
             "url": "{{baseUrl}}/api/users?id={{userId}}",
-            "description": "Admin only. Same route, selected by id. Send at least one of email, firstName, lastName, phone, role, or status. An empty phone clears it. An admin cannot change their own role or status, and the last active admin must remain. Suspending an account revokes its sessions. Role and status are read from the database on each request."
+            "description": "Admin only. Same route, selected by id. Send at least one of email, firstName, lastName, phone, role, or status. An empty phone clears it. An admin cannot change their own role or status, and the last active admin must remain. A vendor with a store cannot change role until that store is removed. Suspending an account revokes its sessions. Duplicate email or phone returns a conflict. Role and status are read from the database on each request."
           }
         },
         {
@@ -327,7 +327,7 @@
               }
             ],
             "url": "{{baseUrl}}/api/users?id={{userId}}",
-            "description": "Admin only. Same route, selected by id. An admin cannot delete their own account or the last active admin. An account that owns a store must have that store removed first. Sessions and the vendor application for this user are removed with the account."
+            "description": "Admin only. Same route, selected by id. An admin cannot delete their own account or the last active admin. An account that owns a store must have that store removed first. Related sessions and the vendor application are removed before the account."
           }
         }
       ]

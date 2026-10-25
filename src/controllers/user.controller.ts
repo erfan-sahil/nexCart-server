@@ -3,7 +3,7 @@ import { userService } from '../services/user.service';
 import { AppError } from '../utils/AppError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendPaginated, sendSuccess } from '../utils/sendResponse';
-import type { ListUsersQuery, UpdateUserInput } from '../validators/user.validator';
+import type { ListUsersQuery, UpdateUserInput, UserIdQuery } from '../validators/user.validator';
 
 const actorId = (req: Request) => {
   if (!req.auth) {
@@ -13,48 +13,40 @@ const actorId = (req: Request) => {
   return req.auth.user.id;
 };
 
-const queryId = (req: Request) => {
-  const id = (req.query as { id?: string }).id;
-  return id ?? '';
-};
-
-const list = asyncHandler(async (req: Request, res: Response) => {
+const listUsers = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query as unknown as ListUsersQuery;
 
   if (query.id) {
     const user = await userService.getById(query.id);
-    sendSuccess(res, { user }, { message: 'User fetched' });
+    sendSuccess(res, user, { message: 'User fetched' });
     return;
   }
 
   const result = await userService.list(query);
 
-  sendPaginated(
-    res,
-    result.items,
-    {
-      page: result.page,
-      limit: result.limit,
-      total: result.total,
-    },
-    'Users fetched',
-  );
+  sendPaginated(res, result.items, {
+    page: result.page,
+    limit: result.limit,
+    total: result.total,
+  });
 });
 
-const update = asyncHandler(async (req: Request, res: Response) => {
-  const user = await userService.update(actorId(req), queryId(req), req.body as UpdateUserInput);
+const updateUser = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.query as unknown as UserIdQuery;
+  const user = await userService.update(actorId(req), id, req.body as UpdateUserInput);
 
-  sendSuccess(res, { user }, { message: 'User updated' });
+  sendSuccess(res, user, { message: 'User updated' });
 });
 
-const remove = asyncHandler(async (req: Request, res: Response) => {
-  const result = await userService.remove(actorId(req), queryId(req));
+const deleteUser = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.query as unknown as UserIdQuery;
+  const result = await userService.remove(actorId(req), id);
 
   sendSuccess(res, result, { message: 'User deleted' });
 });
 
 export const userController = {
-  list,
-  update,
-  remove,
+  listUsers,
+  updateUser,
+  deleteUser,
 };
