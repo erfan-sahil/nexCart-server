@@ -43,6 +43,7 @@ export type PublicStoreDto = PublicStoreSummaryDto & {
 
 export type VendorStoreDto = PublicStoreDto & {
   isActive: boolean;
+  isSuspended: boolean;
   payout: StorePayoutDto | null;
 };
 

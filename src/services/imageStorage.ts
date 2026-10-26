@@ -21,6 +21,8 @@ export type StoredImage = {
 };
 
 const LOCAL_KEY = /^products\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
+const CATEGORY_KEY = /^categories\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
+const CATEGORY_UPLOAD_PATH = /^\/uploads\/(categories\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
 const APPLICATION_KEY = /^applications\/file_[a-f0-9]{24}\.(jpg|png|webp|gif|pdf)$/;
 
 const APPLICATION_EXTENSIONS = {
@@ -70,6 +72,30 @@ const applicationPath = (storageKey: string) => {
   return target;
 };
 
+const categoryPath = (storageKey: string) => {
+  if (!CATEGORY_KEY.test(storageKey)) {
+    throw AppError.internal('Stored image path is invalid');
+  }
+
+  const root = path.resolve(uploadRoot);
+  const target = path.resolve(root, storageKey);
+
+  if (!target.startsWith(`${root}${path.sep}`)) {
+    throw AppError.internal('Stored image path is invalid');
+  }
+
+  return target;
+};
+
+export const categoryImageStorageKey = (imageUrl: string) => {
+  try {
+    const match = CATEGORY_UPLOAD_PATH.exec(new URL(imageUrl).pathname);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+};
+
 const localPath = (storageKey: string) => {
   if (!LOCAL_KEY.test(storageKey)) {
     throw AppError.internal('Stored image path is invalid');
@@ -87,6 +113,7 @@ const localPath = (storageKey: string) => {
 
 export const ensureUploadDir = async () => {
   await mkdir(path.join(uploadRoot, 'products'), { recursive: true });
+  await mkdir(path.join(uploadRoot, 'categories'), { recursive: true });
 };
 
 // Local disk for now. The image id stays on the product if storage later moves
@@ -113,6 +140,45 @@ export const imageStorage = {
     const target = localPath(storageKey);
 
     await ensureUploadDir();
+
+    try {
+      await writeFile(target, file.buffer);
+    } catch (error) {
+      await unlink(target).catch(() => undefined);
+      throw error;
+    }
+
+    return {
+      id,
+      provider: 'local',
+      storageKey,
+      url: `/uploads/${storageKey}`,
+      mimeType,
+      size: file.buffer.length,
+    };
+  },
+
+  async saveCategoryImage(file: { buffer: Buffer; mimeType: string }): Promise<StoredImage> {
+    const mimeType = file.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
+
+    if (!isProductImageMimeType(mimeType)) {
+      throw AppError.unsupportedMedia('Only JPEG, PNG, WebP, and GIF images are allowed');
+    }
+
+    if (file.buffer.length < 1 || file.buffer.length > MAX_PRODUCT_IMAGE_BYTES) {
+      throw AppError.payloadTooLarge('Each image must be 5 MB or smaller');
+    }
+
+    if (!hasSignature(mimeType, file.buffer)) {
+      throw AppError.validation('File content does not match its image type');
+    }
+
+    const id = createImageId();
+    const extension = PRODUCT_IMAGE_EXTENSIONS[mimeType];
+    const storageKey = `categories/${id}${extension}`;
+    const target = categoryPath(storageKey);
+
+    await mkdir(path.join(uploadRoot, 'categories'), { recursive: true });
 
     try {
       await writeFile(target, file.buffer);
@@ -168,6 +234,23 @@ export const imageStorage = {
       url: `/uploads/${storageKey}`,
       mimeType,
     };
+  },
+
+  async removeCategory(storageKey: string) {
+    try {
+      await unlink(categoryPath(storageKey));
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        return;
+      }
+
+      throw error;
+    }
   },
 
   async remove(storageKey: string) {

@@ -60,6 +60,7 @@ const storeSchema = new Schema(
     returnPolicy: { type: String, trim: true, maxlength: 2000, default: '' },
     shippingPolicy: { type: String, trim: true, maxlength: 2000, default: '' },
     isActive: { type: Boolean, required: true, default: true },
+    suspendedAt: { type: Date, default: null },
     joinedAt: { type: Date, required: true },
   },
   {
@@ -68,7 +69,7 @@ const storeSchema = new Schema(
   },
 );
 
-storeSchema.index({ isActive: 1, name: 1 });
+storeSchema.index({ isActive: 1, suspendedAt: 1, name: 1 });
 storeSchema.index({ isActive: 1, joinedAt: -1 });
 storeSchema.index({ isActive: 1, ratingAverage: -1 });
 storeSchema.index({ categoryIds: 1, isActive: 1 });
@@ -78,5 +79,14 @@ export type Store = InferSchemaType<typeof storeSchema> & {
   createdAt: Date;
   updatedAt: Date;
 };
+
+export const listedStoreFilter = {
+  isActive: true,
+  suspendedAt: null,
+} as const;
+
+export const isStoreListed = (
+  store: { isActive?: boolean; suspendedAt?: Date | null } | null | undefined,
+) => Boolean(store?.isActive) && !store?.suspendedAt;
 
 export const StoreModel = model<Store>('Store', storeSchema);

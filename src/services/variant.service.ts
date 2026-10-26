@@ -4,7 +4,7 @@ import { AttributeModel } from '../models/attribute.model';
 import { CategoryAttributeModel } from '../models/categoryAttribute.model';
 import { ProductModel, type Product } from '../models/product.model';
 import { ProductVariantModel, type ProductVariant } from '../models/productVariant.model';
-import { StoreModel } from '../models/store.model';
+import { StoreModel, isStoreListed } from '../models/store.model';
 import { attributeService } from './attribute.service';
 import {
   normalizeVariantAttributes,
@@ -204,12 +204,12 @@ const findOwnedProduct = async (userId: string, productId: string) => {
 };
 
 const accessFor = async (product: ProductDocument, viewer?: ProductViewer) => {
-  const store = await StoreModel.findById(product.storeId).select('userId isActive');
+  const store = await StoreModel.findById(product.storeId).select('userId isActive suspendedAt');
   const listed =
     product.approvalStatus === 'approved' &&
     product.status === 'active' &&
     product.isPublished &&
-    Boolean(store?.isActive);
+    isStoreListed(store);
   const canManage =
     Boolean(viewer && roleHasPermission(viewer.role, Permission.adminProductModeration)) ||
     Boolean(viewer && store && String(store.userId) === viewer.id);
