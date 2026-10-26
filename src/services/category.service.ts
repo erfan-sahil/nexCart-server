@@ -16,6 +16,7 @@ import type {
   ListCategoriesQuery,
   UpdateCategoryInput,
 } from '../validators/category.validator';
+import { categoryImageStorageKey, imageStorage } from './imageStorage';
 
 type CategoryRecord = {
   _id: Types.ObjectId;
@@ -191,6 +192,16 @@ const resolveParent = async (
   };
 };
 
+const releaseCategoryImage = async (imageUrl: string) => {
+  const storageKey = categoryImageStorageKey(imageUrl);
+
+  if (!storageKey) {
+    return;
+  }
+
+  await imageStorage.removeCategory(storageKey).catch(() => undefined);
+};
+
 const findCategory = async (id: string) => {
   const category = await CategoryModel.findById(id);
 
@@ -324,6 +335,8 @@ export const categoryService = {
       category.description = input.description;
     }
 
+    const previousImage = category.image;
+
     if (input.image !== undefined) {
       category.image = input.image;
     }
@@ -350,6 +363,10 @@ export const categoryService = {
       await CategoryModel.updateMany({ ancestors: category._id }, { $set: { isActive: false } });
     }
 
+    if (input.image !== undefined && previousImage !== category.image) {
+      await releaseCategoryImage(previousImage);
+    }
+
     return toDetail(category);
   },
 
@@ -361,8 +378,11 @@ export const categoryService = {
       throw AppError.conflict('Delete child categories before deleting this category');
     }
 
+    const image = category.image;
+
     await category.deleteOne();
     await CategoryAttributeModel.deleteMany({ categoryId: category._id });
+    await releaseCategoryImage(image);
 
     return { id: String(category._id) };
   },

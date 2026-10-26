@@ -3,6 +3,7 @@ import { Permission } from '../constants/permissions';
 import { attributeController } from '../controllers/attribute.controller';
 import { categoryController } from '../controllers/category.controller';
 import { requirePermissions } from '../middleware/authorize';
+import { uploadCategoryImage } from '../middleware/uploadCategoryImage';
 import { validate } from '../middleware/validate';
 import { replaceCategoryAttributesSchema } from '../validators/attribute.validator';
 import {
@@ -39,6 +40,13 @@ categoryRouter.post(
   ...requirePermissions(Permission.adminCategories),
   validate({ body: createCategorySchema }),
   categoryController.createCategory,
+);
+
+categoryRouter.post(
+  '/image',
+  ...requirePermissions(Permission.adminCategories),
+  uploadCategoryImage,
+  categoryController.uploadCategoryImage,
 );
 
 categoryRouter.get(

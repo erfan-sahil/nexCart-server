@@ -1,5 +1,7 @@
 import type { Request, Response } from 'express';
 import { categoryService } from '../services/category.service';
+import { imageStorage } from '../services/imageStorage';
+import { AppError } from '../utils/AppError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendCreated, sendPaginated, sendSuccess } from '../utils/sendResponse';
 import type {
@@ -42,6 +44,36 @@ const getCategoryBySlug = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, category, { message: 'Category fetched' });
 });
 
+const absoluteUploadUrl = (req: Request, url: string) => {
+  const host = req.get('host');
+
+  if (!host) {
+    throw AppError.internal('Could not build the file URL');
+  }
+
+  return `${req.protocol}://${host}${url}`;
+};
+
+const uploadCategoryImage = asyncHandler(async (req: Request, res: Response) => {
+  const file = req.file;
+
+  if (!file || !Buffer.isBuffer(file.buffer)) {
+    throw AppError.validation('An image file is required');
+  }
+
+  const mimeType = file.mimetype.split(';')[0]?.trim().toLowerCase() ?? '';
+  const stored = await imageStorage.saveCategoryImage({
+    buffer: file.buffer,
+    mimeType,
+  });
+
+  sendSuccess(
+    res,
+    { url: absoluteUploadUrl(req, stored.url) },
+    { statusCode: 201, message: 'Category image uploaded' },
+  );
+});
+
 const createCategory = asyncHandler(async (req: Request, res: Response) => {
   const category = await categoryService.create(req.body as CreateCategoryInput);
 
@@ -68,6 +100,7 @@ export const categoryController = {
   treeCategories,
   getCategory,
   getCategoryBySlug,
+  uploadCategoryImage,
   createCategory,
   updateCategory,
   deleteCategory,
