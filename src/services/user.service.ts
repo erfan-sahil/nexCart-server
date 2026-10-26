@@ -96,6 +96,31 @@ const findUser = async (userId: string) => {
   return user;
 };
 
+const applyStatus = async (user: User, input: AccountStatusInput) => {
+  if (user.status === input.status) {
+    return toUserDto(user);
+  }
+
+  if (input.status !== 'active') {
+    await assertAnotherActiveAdminRemains(user);
+  }
+
+  const previousStatus = user.status;
+  const updated = await UserModel.findByIdAndUpdate(
+    user._id,
+    { $set: { status: input.status } },
+    { new: true, runValidators: true },
+  );
+
+  if (!updated) {
+    throw AppError.notFound('User not found');
+  }
+
+  await syncAccountStatus(updated, previousStatus);
+
+  return toUserDto(updated);
+};
+
 const buildUpdate = (input: UpdateUserInput): UpdateQuery<User> => {
   const $set: NonNullable<UpdateQuery<User>['$set']> = {};
   const $unset: NonNullable<UpdateQuery<User>['$unset']> = {};
@@ -120,10 +145,6 @@ const buildUpdate = (input: UpdateUserInput): UpdateQuery<User> => {
 
   if (input.role !== undefined) {
     $set.role = input.role;
-  }
-
-  if (input.status !== undefined) {
-    $set.status = input.status;
   }
 
   const update: UpdateQuery<User> = {};
@@ -179,27 +200,17 @@ export const userService = {
   async update(actorId: string, userId: string, input: UpdateUserInput) {
     const user = await findUser(userId);
     const nextRole = input.role ?? user.role;
-    const nextStatus = input.status ?? user.status;
-    const previousStatus = user.status;
     const roleChanging = input.role !== undefined && input.role !== user.role;
-    const statusChanging = input.status !== undefined && input.status !== user.status;
+
+    if ((user.role === 'customer' || user.role === 'vendor') && roleChanging) {
+      throw AppError.forbidden('Buyer and vendor roles cannot be changed');
+    }
 
     if (actorId === userId && roleChanging) {
       throw AppError.forbidden('You cannot change your own role');
     }
 
-    if (actorId === userId && statusChanging) {
-      throw AppError.forbidden('You cannot change your own status');
-    }
-
-    if (user.role === 'vendor' && roleChanging && input.role !== 'vendor') {
-      await assertNoOwnedStore(
-        user._id,
-        'Remove the store owned by this user before changing the role',
-      );
-    }
-
-    const staysActiveAdmin = nextRole === 'admin' && nextStatus === 'active';
+    const staysActiveAdmin = nextRole === 'admin' && user.status === 'active';
 
     if (!staysActiveAdmin) {
       await assertAnotherActiveAdminRemains(user);
@@ -215,7 +226,12 @@ export const userService = {
         throw AppError.notFound('User not found');
       }
 
-      await syncAccountStatus(updated, previousStatus);
+      if (roleChanging && updated.role === 'vendor') {
+        await storeService.setSuspendedForOwner(
+          String(updated._id),
+          updated.status === 'suspended',
+        );
+      }
 
       return toUserDto(updated);
     } catch (error) {
@@ -225,6 +241,15 @@ export const userService = {
 
       throw mapAccountDuplicate(error);
     }
+  },
+
+  async setAccountStatus(actorId: string, userId: string, input: AccountStatusInput) {
+    if (actorId === userId) {
+      throw AppError.forbidden('You cannot change your own status');
+    }
+
+    const user = await findUser(userId);
+    return applyStatus(user, input);
   },
 
   async setStatus(
@@ -243,24 +268,7 @@ export const userService = {
       throw AppError.notFound(role === 'customer' ? 'Buyer not found' : 'Vendor not found');
     }
 
-    if (user.status === input.status) {
-      return toUserDto(user);
-    }
-
-    const previousStatus = user.status;
-    const updated = await UserModel.findByIdAndUpdate(
-      user._id,
-      { $set: { status: input.status } },
-      { new: true, runValidators: true },
-    );
-
-    if (!updated) {
-      throw AppError.notFound(role === 'customer' ? 'Buyer not found' : 'Vendor not found');
-    }
-
-    await syncAccountStatus(updated, previousStatus);
-
-    return toUserDto(updated);
+    return applyStatus(user, input);
   },
 
   async remove(actorId: string, userId: string) {

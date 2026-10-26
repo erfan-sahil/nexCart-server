@@ -43,6 +43,17 @@ const updateUser = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, user, { message: 'User updated' });
 });
 
+const setAccountStatus = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.query as unknown as UserIdQuery;
+  const input = req.body as AccountStatusInput;
+  const user = await userService.setAccountStatus(actorId(req), id, input);
+  const label = user.role === 'customer' ? 'Buyer' : user.role === 'vendor' ? 'Vendor' : 'User';
+
+  sendSuccess(res, user, {
+    message: input.status === 'suspended' ? `${label} suspended` : `${label} activated`,
+  });
+});
+
 const setBuyerStatus = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.query as unknown as UserIdQuery;
   const input = req.body as AccountStatusInput;
@@ -73,6 +84,7 @@ const deleteUser = asyncHandler(async (req: Request, res: Response) => {
 export const userController = {
   listUsers,
   updateUser,
+  setAccountStatus,
   setBuyerStatus,
   setVendorStatus,
   deleteUser,

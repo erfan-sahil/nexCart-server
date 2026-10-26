@@ -57,7 +57,6 @@ export const updateUserSchema = z
     lastName: nameSchema.optional(),
     phone: phoneSchema.or(z.literal('')).optional(),
     role: z.enum(USER_ROLES).optional(),
-    status: z.enum(USER_STATUSES).optional(),
   })
   .strict()
   .refine((value) => Object.values(value).some((field) => field !== undefined), {

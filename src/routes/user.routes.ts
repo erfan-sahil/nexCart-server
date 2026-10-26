@@ -29,6 +29,13 @@ userRouter.patch(
 );
 
 userRouter.patch(
+  '/status',
+  ...adminUsers,
+  validate({ query: userIdQuerySchema, body: accountStatusSchema }),
+  userController.setAccountStatus,
+);
+
+userRouter.patch(
   '/buyers/status',
   ...adminUsers,
   validate({ query: userIdQuerySchema, body: accountStatusSchema }),
