@@ -358,6 +358,33 @@ const present = async (variant: VariantDocument, product: ProductDocument) => {
   return dto;
 };
 
+const resolveCreateAttributes = async (product: ProductDocument, input: CreateVariantInput) => {
+  if (input.simple === true) {
+    const existing = await ProductVariantModel.exists({ productId: product._id });
+
+    if (existing) {
+      throw AppError.conflict('A product without options can only have one price');
+    }
+
+    return {
+      attributes: [],
+      optionKey: variantOptionKey([]),
+    };
+  }
+
+  const plain = await ProductVariantModel.exists({
+    productId: product._id,
+    attributes: { $size: 0 },
+  });
+  const resolved = await resolveAttributes(String(product.categoryId), input.attributes);
+
+  if (plain && resolved.attributes.length > 0) {
+    throw AppError.conflict('This product is sold without options');
+  }
+
+  return resolved;
+};
+
 const resolveAttributes = async (
   categoryId: string,
   input: VariantAttributeInput[] | undefined,
@@ -605,10 +632,7 @@ export const variantService = {
         : money(input.compareAtPrice);
     assertPrice(price, compareAtPrice);
 
-    const { attributes, optionKey } = await resolveAttributes(
-      String(product.categoryId),
-      input.attributes,
-    );
+    const { attributes, optionKey } = await resolveCreateAttributes(product, input);
     const currentDefault = await ProductVariantModel.findOne({
       productId: product._id,
       isDefault: true,

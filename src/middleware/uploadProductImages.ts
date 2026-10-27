@@ -25,6 +25,32 @@ const upload = multer({
   },
 });
 
+export const uploadProductImage: RequestHandler = (req, res, next) => {
+  upload.single('image')(req, res, (error: unknown) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    if (error instanceof AppError) {
+      next(error);
+      return;
+    }
+
+    if (error instanceof multer.MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        next(AppError.payloadTooLarge('Each image must be 5 MB or smaller'));
+        return;
+      }
+
+      next(AppError.badRequest('Could not read the image'));
+      return;
+    }
+
+    next(error);
+  });
+};
+
 export const uploadProductImages: RequestHandler = (req, res, next) => {
   upload.array('images', MAX_PRODUCT_IMAGES)(req, res, (error: unknown) => {
     if (!error) {

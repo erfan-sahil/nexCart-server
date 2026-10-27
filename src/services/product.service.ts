@@ -320,6 +320,54 @@ const discardImages = async (images: { storageKey: string }[]) => {
   );
 };
 
+const attachUploadedImages = async (product: ProductDocument, urls: string[]) => {
+  if (urls.length < 1) {
+    throw AppError.validation('Choose at least one image');
+  }
+
+  if (product.images.length + urls.length > MAX_PRODUCT_IMAGES) {
+    throw AppError.validation(`A product can have at most ${MAX_PRODUCT_IMAGES} images`);
+  }
+
+  const resolved = [];
+  const seen = new Set<string>();
+
+  for (const url of urls) {
+    const image = await imageStorage.readProductUpload(url);
+
+    if (seen.has(image.storageKey)) {
+      throw AppError.validation('Each image can be added once');
+    }
+
+    seen.add(image.storageKey);
+    resolved.push(image);
+  }
+
+  const taken = await ProductModel.exists({
+    'images.storageKey': { $in: resolved.map((image) => image.storageKey) },
+  });
+
+  if (taken) {
+    throw AppError.validation('This image is already used on a product');
+  }
+
+  for (const image of resolved) {
+    product.images.push({
+      imageId: image.id,
+      provider: image.provider,
+      storageKey: image.storageKey,
+      url: image.url,
+      mimeType: image.mimeType,
+      size: image.size,
+      alt: '',
+      sortOrder: product.images.length,
+    });
+  }
+
+  resequence(product);
+  syncThumbnail(product);
+};
+
 const storeImages = async (product: ProductDocument, files: ImageUpload[]) => {
   if (product.images.length + files.length > MAX_PRODUCT_IMAGES) {
     throw AppError.validation(`A product can have at most ${MAX_PRODUCT_IMAGES} images`);
@@ -671,11 +719,7 @@ const assertVendorCanChange = (product: { approvalStatus: string }) => {
 };
 
 export const productService = {
-  async create(userId: string, input: CreateProductInput, files: ImageUpload[]) {
-    if (files.length < 1) {
-      throw AppError.validation('Choose at least one image');
-    }
-
+  async create(userId: string, input: CreateProductInput) {
     const store = await findVendorStore(userId);
     await assertCategory(input.categoryId, store.categoryIds);
     const { nextStatus, nextPublished } = publishState(
@@ -702,14 +746,13 @@ export const productService = {
       ratingSummary: { average: 0, count: 0 },
     });
 
-    const saved = await storeImages(product, files);
+    await attachUploadedImages(product, input.images);
 
     try {
       await applyAttributes(product, input.attributes);
       await assertSellable(readProduct(product));
       await product.save();
     } catch (error) {
-      await discardImages(saved);
       throw mapDuplicate(error);
     }
 

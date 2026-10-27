@@ -32,6 +32,7 @@ const variantFields = {
   attributes: z.array(attributeValueSchema).max(20).optional(),
   status: z.enum(VARIANT_STATUSES).optional(),
   isDefault: z.boolean().optional(),
+  simple: z.boolean().optional(),
 };
 
 const refineVariant = (
@@ -39,6 +40,7 @@ const refineVariant = (
     price?: number;
     compareAtPrice?: number | null;
     attributes?: { attributeId: string }[];
+    simple?: boolean;
   },
   ctx: z.RefinementCtx,
 ) => {
@@ -68,6 +70,14 @@ const refineVariant = (
 
     attributes.add(attribute.attributeId);
   });
+
+  if (value.simple === true && (value.attributes?.length ?? 0) > 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['attributes'],
+      message: 'A product without options cannot set variant options',
+    });
+  }
 };
 
 export const createVariantSchema = z
@@ -80,6 +90,7 @@ export const createVariantSchema = z
     attributes: variantFields.attributes,
     status: variantFields.status,
     isDefault: variantFields.isDefault,
+    simple: variantFields.simple,
   })
   .strict()
   .superRefine((value, ctx) => refineVariant(value, ctx));

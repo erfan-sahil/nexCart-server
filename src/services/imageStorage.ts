@@ -1,4 +1,4 @@
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { uploadRoot } from '../config/uploads';
@@ -23,6 +23,13 @@ export type StoredImage = {
 const LOCAL_KEY = /^products\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
 const CATEGORY_KEY = /^categories\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
 const CATEGORY_UPLOAD_PATH = /^\/uploads\/(categories\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
+const PRODUCT_UPLOAD_PATH = /^\/uploads\/(products\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
+const MIME_BY_EXTENSION: Record<string, ProductImageMimeType> = {
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+};
 const APPLICATION_KEY = /^applications\/file_[a-f0-9]{24}\.(jpg|png|webp|gif|pdf)$/;
 
 const APPLICATION_EXTENSIONS = {
@@ -96,6 +103,15 @@ export const categoryImageStorageKey = (imageUrl: string) => {
   }
 };
 
+const productImageStorageKey = (imageUrl: string) => {
+  try {
+    const match = PRODUCT_UPLOAD_PATH.exec(new URL(imageUrl).pathname);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+};
+
 const localPath = (storageKey: string) => {
   if (!LOCAL_KEY.test(storageKey)) {
     throw AppError.internal('Stored image path is invalid');
@@ -155,6 +171,53 @@ export const imageStorage = {
       url: `/uploads/${storageKey}`,
       mimeType,
       size: file.buffer.length,
+    };
+  },
+
+  async readProductUpload(imageUrl: string): Promise<StoredImage> {
+    const storageKey = productImageStorageKey(imageUrl);
+
+    if (!storageKey) {
+      throw AppError.validation('Upload the image before saving the product');
+    }
+
+    const extension = path.extname(storageKey);
+    const mimeType = MIME_BY_EXTENSION[extension];
+    const id = path.basename(storageKey, extension);
+
+    if (!mimeType) {
+      throw AppError.validation('Upload the image before saving the product');
+    }
+
+    let size = 0;
+
+    try {
+      const info = await stat(localPath(storageKey));
+
+      if (!info.isFile()) {
+        throw AppError.validation('Upload the image again before saving the product');
+      }
+
+      size = info.size;
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+
+      throw AppError.validation('Upload the image again before saving the product');
+    }
+
+    if (size < 1 || size > MAX_PRODUCT_IMAGE_BYTES) {
+      throw AppError.validation('Upload the image again before saving the product');
+    }
+
+    return {
+      id,
+      provider: 'local',
+      storageKey,
+      url: `/uploads/${storageKey}`,
+      mimeType,
+      size,
     };
   },
 
