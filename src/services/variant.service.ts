@@ -237,12 +237,6 @@ const assertImage = (imageId: string, images: ImageSource[]) => {
 const requiresActiveVariant = (product: { isPublished: boolean; approvalStatus: string }) =>
   product.isPublished || product.approvalStatus === 'submitted';
 
-const assertVendorCanChange = (product: { approvalStatus: string }) => {
-  if (product.approvalStatus === 'submitted') {
-    throw AppError.conflict('This product is waiting for admin approval');
-  }
-};
-
 const findOwnedProduct = async (userId: string, productId: string) => {
   const store = await StoreModel.findOne({ userId }).select('_id');
 
@@ -717,7 +711,6 @@ export const variantService = {
 
   async create(userId: string, productId: string, input: CreateVariantInput) {
     const product = await findOwnedProduct(userId, productId);
-    assertVendorCanChange(product);
 
     const images = productImages(product);
     assertImage(input.imageId ?? '', images);
@@ -763,7 +756,6 @@ export const variantService = {
 
   async update(userId: string, productId: string, variantId: string, input: UpdateVariantInput) {
     const product = await findOwnedProduct(userId, productId);
-    assertVendorCanChange(product);
     const variant = await ProductVariantModel.findOne({ _id: variantId, productId: product._id });
 
     if (!variant) {
@@ -855,7 +847,6 @@ export const variantService = {
 
   async remove(userId: string, productId: string, variantId: string) {
     const product = await findOwnedProduct(userId, productId);
-    assertVendorCanChange(product);
     const variant = await ProductVariantModel.findOne({ _id: variantId, productId: product._id });
 
     if (!variant) {

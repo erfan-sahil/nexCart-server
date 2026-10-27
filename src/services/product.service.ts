@@ -712,12 +712,6 @@ const publishState = (
   return { nextStatus, nextPublished };
 };
 
-const assertVendorCanChange = (product: { approvalStatus: string }) => {
-  if (product.approvalStatus === 'submitted') {
-    throw AppError.conflict('This product is waiting for admin approval');
-  }
-};
-
 export const productService = {
   async create(userId: string, input: CreateProductInput) {
     const store = await findVendorStore(userId);
@@ -765,7 +759,6 @@ export const productService = {
 
   async update(userId: string, productId: string, input: UpdateProductInput) {
     const product = await findOwnedProduct(userId, productId);
-    assertVendorCanChange(product);
     const wasListed = isListed(product);
 
     if (input.name !== undefined) {
@@ -855,7 +848,6 @@ export const productService = {
     }
 
     const product = await findOwnedProduct(userId, productId);
-    assertVendorCanChange(product);
     const saved = await storeImages(product, files);
 
     try {
@@ -870,7 +862,6 @@ export const productService = {
 
   async removeImage(userId: string, productId: string, imageId: string) {
     const product = await findOwnedProduct(userId, productId);
-    assertVendorCanChange(product);
     const index = product.images.findIndex((image) => image.imageId === imageId);
     const image = product.images[index];
 
@@ -896,7 +887,6 @@ export const productService = {
 
   async setThumbnail(userId: string, productId: string, imageId: string) {
     const product = await findOwnedProduct(userId, productId);
-    assertVendorCanChange(product);
     const image = product.images.find((item) => item.imageId === imageId);
 
     if (!image) {
