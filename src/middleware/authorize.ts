@@ -4,9 +4,13 @@ import { roleHasPermission } from '../constants/permissions';
 import { AppError } from '../utils/AppError';
 import { authenticate } from './authenticate';
 
-export const authorize =
-  (...required: [Permission, ...Permission[]]) =>
-  (req: Request, _res: Response, next: NextFunction) => {
+type Middleware = (req: Request, res: Response, next: NextFunction) => void;
+type PermissionList = [Permission, ...Permission[]];
+
+const forbiddenMessage = 'You do not have permission to perform this action';
+
+function checkPermissions(required: PermissionList, mode: 'every' | 'some'): Middleware {
+  return (req, _res, next) => {
     const auth = req.auth;
 
     if (!auth) {
@@ -14,42 +18,34 @@ export const authorize =
       return;
     }
 
-    const allowed = required.every((permission) => roleHasPermission(auth.user.role, permission));
+    const allowed =
+      mode === 'every'
+        ? required.every((permission) => roleHasPermission(auth.user.role, permission))
+        : required.some((permission) => roleHasPermission(auth.user.role, permission));
 
     if (!allowed) {
-      next(AppError.forbidden('You do not have permission to perform this action'));
+      next(AppError.forbidden(forbiddenMessage));
       return;
     }
 
     next();
   };
+}
 
-export const authorizeAny =
-  (...required: [Permission, ...Permission[]]) =>
-  (req: Request, _res: Response, next: NextFunction) => {
-    const auth = req.auth;
+export function authorize(...required: PermissionList): Middleware {
+  return checkPermissions(required, 'every');
+}
 
-    if (!auth) {
-      next(AppError.unauthorized());
-      return;
-    }
+export function authorizeAny(...required: PermissionList): Middleware {
+  return checkPermissions(required, 'some');
+}
 
-    const allowed = required.some((permission) => roleHasPermission(auth.user.role, permission));
+export function requirePermissions(...required: PermissionList): readonly [Middleware, Middleware] {
+  return [authenticate, authorize(...required)];
+}
 
-    if (!allowed) {
-      next(AppError.forbidden('You do not have permission to perform this action'));
-      return;
-    }
-
-    next();
-  };
-
-export const requirePermissions = (...required: [Permission, ...Permission[]]) => [
-  authenticate,
-  authorize(...required),
-];
-
-export const requireAnyPermissions = (...required: [Permission, ...Permission[]]) => [
-  authenticate,
-  authorizeAny(...required),
-];
+export function requireAnyPermissions(
+  ...required: PermissionList
+): readonly [Middleware, Middleware] {
+  return [authenticate, authorizeAny(...required)];
+}
