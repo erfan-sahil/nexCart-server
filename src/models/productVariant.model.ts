@@ -47,7 +47,17 @@ const productVariantSchema = new Schema(
       required: true,
       min: 0,
     },
-    compareAtPrice: {
+    discountType: {
+      type: String,
+      default: null,
+      validate: {
+        validator(value: string | null) {
+          return value === null || value === undefined || value === 'percent' || value === 'amount';
+        },
+        message: 'Discount must be a percentage or an amount',
+      },
+    },
+    discountValue: {
       type: Number,
       default: null,
       min: 0,
