@@ -24,7 +24,32 @@ export const authorize =
     next();
   };
 
+export const authorizeAny =
+  (...required: [Permission, ...Permission[]]) =>
+  (req: Request, _res: Response, next: NextFunction) => {
+    const auth = req.auth;
+
+    if (!auth) {
+      next(AppError.unauthorized());
+      return;
+    }
+
+    const allowed = required.some((permission) => roleHasPermission(auth.user.role, permission));
+
+    if (!allowed) {
+      next(AppError.forbidden('You do not have permission to perform this action'));
+      return;
+    }
+
+    next();
+  };
+
 export const requirePermissions = (...required: [Permission, ...Permission[]]) => [
   authenticate,
   authorize(...required),
+];
+
+export const requireAnyPermissions = (...required: [Permission, ...Permission[]]) => [
+  authenticate,
+  authorizeAny(...required),
 ];
