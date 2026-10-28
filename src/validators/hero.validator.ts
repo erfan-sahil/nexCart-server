@@ -77,3 +77,22 @@ export const upsertHeroSchema = z
   });
 
 export type UpsertHeroInput = z.infer<typeof upsertHeroSchema>;
+
+export const heroIndexParamsSchema = z
+  .object({
+    index: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(HERO_LIMITS.slides - 1),
+  })
+  .strict();
+
+export const setHeroActiveSchema = z
+  .object({
+    isActive: z.boolean({ error: 'Active status is required' }),
+  })
+  .strict();
+
+export type HeroIndexParams = z.infer<typeof heroIndexParamsSchema>;
+export type SetHeroActiveInput = z.infer<typeof setHeroActiveSchema>;

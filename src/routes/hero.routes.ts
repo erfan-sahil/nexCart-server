@@ -4,7 +4,11 @@ import { heroController } from '../controllers/hero.controller';
 import { requirePermissions } from '../middleware/authorize';
 import { uploadHeroImage } from '../middleware/uploadHeroImage';
 import { validate } from '../middleware/validate';
-import { upsertHeroSchema } from '../validators/hero.validator';
+import {
+  heroIndexParamsSchema,
+  setHeroActiveSchema,
+  upsertHeroSchema,
+} from '../validators/hero.validator';
 
 export const heroRouter = Router();
 
@@ -15,6 +19,13 @@ heroRouter.put(
   ...requirePermissions(Permission.adminPlatformSettings),
   validate({ body: upsertHeroSchema }),
   heroController.upsertHero,
+);
+
+heroRouter.patch(
+  '/:index',
+  ...requirePermissions(Permission.adminPlatformSettings),
+  validate({ params: heroIndexParamsSchema, body: setHeroActiveSchema }),
+  heroController.setHeroActive,
 );
 
 heroRouter.post(

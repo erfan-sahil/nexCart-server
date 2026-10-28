@@ -219,4 +219,31 @@ export const heroService = {
 
     return { slides };
   },
+
+  async setActive(index: number, isActive: boolean): Promise<HeroSection> {
+    const existing: unknown = await HeroModel.findOne({ key: HERO_KEY }).lean();
+    const slides = slidesFromDocument(existing);
+    const slide = slides[index];
+
+    if (!slide) {
+      throw AppError.notFound('Hero not found');
+    }
+
+    if (slide.isActive === isActive) {
+      return { slides };
+    }
+
+    const next = slides.map((item, itemIndex) =>
+      itemIndex === index ? { ...item, isActive } : item,
+    );
+
+    assertActiveLimit(next);
+    const hero = await saveHero(next);
+
+    if (!hero) {
+      throw AppError.internal('Could not update the hero');
+    }
+
+    return { slides: next };
+  },
 };
