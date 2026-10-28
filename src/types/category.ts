@@ -30,4 +30,5 @@ export type CategoryDetailDto = CategoryDto & {
 
 export type CategoryTreeNode = CategoryDto & {
   children: CategoryTreeNode[];
+  productCount: number;
 };

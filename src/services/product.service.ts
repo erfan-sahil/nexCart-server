@@ -95,6 +95,11 @@ const SORTS: Record<ProductSort, Record<string, 1 | -1>> = {
   '-createdAt': { createdAt: -1 },
   rating: { 'ratingSummary.average': 1 },
   '-rating': { 'ratingSummary.average': -1 },
+  newest: { publishedAt: -1, _id: -1 },
+  bestsellers: { 'metrics.unitsSold30d': -1, _id: 1 },
+  'price-asc': { 'listing.minPrice': 1, _id: 1 },
+  'price-desc': { 'listing.minPrice': -1, _id: 1 },
+  featured: { isFeatured: -1, publishedAt: -1, _id: 1 },
 };
 
 const isListed = (product: { status: string; isPublished: boolean; approvalStatus: string }) =>
@@ -1044,6 +1049,24 @@ export const productService = {
 
     if (query.isFeatured !== undefined) {
       filter.isFeatured = query.isFeatured;
+    }
+
+    if (query.minPrice !== undefined || query.maxPrice !== undefined) {
+      const price: { $gte?: number; $lte?: number } = {};
+
+      if (query.minPrice !== undefined) {
+        price.$gte = query.minPrice;
+      }
+
+      if (query.maxPrice !== undefined) {
+        price.$lte = query.maxPrice;
+      }
+
+      filter['listing.minPrice'] = price;
+    }
+
+    if (query.minRating !== undefined) {
+      filter['ratingSummary.average'] = { $gte: query.minRating };
     }
 
     applySearch(filter, query.search);
