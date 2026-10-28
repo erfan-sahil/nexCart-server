@@ -26,6 +26,8 @@ const CATEGORY_KEY = /^categories\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
 const CATEGORY_UPLOAD_PATH = /^\/uploads\/(categories\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
 const HERO_KEY = /^hero\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
 const HERO_UPLOAD_PATH = /^\/uploads\/(hero\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
+const STORE_KEY = /^stores\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
+const STORE_UPLOAD_PATH = /^\/uploads\/(stores\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
 const PRODUCT_UPLOAD_PATH = /^\/uploads\/(products\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
 const MIME_BY_EXTENSION: Record<string, ProductImageMimeType> = {
   '.jpg': 'image/jpeg',
@@ -101,6 +103,8 @@ const categoryPath = (storageKey: string) => storedPath(storageKey, CATEGORY_KEY
 
 const heroPath = (storageKey: string) => storedPath(storageKey, HERO_KEY);
 
+const storePath = (storageKey: string) => storedPath(storageKey, STORE_KEY);
+
 export const categoryImageStorageKey = (imageUrl: string) => {
   try {
     const match = CATEGORY_UPLOAD_PATH.exec(new URL(imageUrl).pathname);
@@ -113,6 +117,15 @@ export const categoryImageStorageKey = (imageUrl: string) => {
 export const heroImageStorageKey = (imageUrl: string) => {
   try {
     const match = HERO_UPLOAD_PATH.exec(new URL(imageUrl).pathname);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+};
+
+export const storeImageStorageKey = (imageUrl: string) => {
+  try {
+    const match = STORE_UPLOAD_PATH.exec(new URL(imageUrl).pathname);
     return match?.[1] ?? null;
   } catch {
     return null;
@@ -147,11 +160,21 @@ export const ensureUploadDir = async () => {
   await mkdir(path.join(uploadRoot, 'products'), { recursive: true });
   await mkdir(path.join(uploadRoot, 'categories'), { recursive: true });
   await mkdir(path.join(uploadRoot, 'hero'), { recursive: true });
+  await mkdir(path.join(uploadRoot, 'stores'), { recursive: true });
 };
+
+const IMAGE_FOLDERS = {
+  products: localPath,
+  categories: categoryPath,
+  hero: heroPath,
+  stores: storePath,
+} as const;
+
+type ImageFolder = keyof typeof IMAGE_FOLDERS;
 
 const persistImage = async (
   file: { buffer: Buffer; mimeType: string },
-  folder: 'products' | 'categories' | 'hero',
+  folder: ImageFolder,
   profile: ImageOptimizeProfile,
 ): Promise<StoredImage> => {
   const mimeType = file.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
@@ -172,9 +195,7 @@ const persistImage = async (
   const id = createImageId();
   const extension = PRODUCT_IMAGE_EXTENSIONS[optimized.mimeType];
   const storageKey = `${folder}/${id}${extension}`;
-  const resolvePath =
-    folder === 'products' ? localPath : folder === 'categories' ? categoryPath : heroPath;
-  const target = resolvePath(storageKey);
+  const target = IMAGE_FOLDERS[folder](storageKey);
 
   await ensureUploadDir();
 
@@ -314,6 +335,67 @@ export const imageStorage = {
     return persistImage(file, 'hero', 'hero');
   },
 
+  async readStoreUpload(imageUrl: string, field: 'logo' | 'banner'): Promise<StoredImage> {
+    const storageKey = storeImageStorageKey(imageUrl);
+    const missing = (again = false) => {
+      const message = again
+        ? 'Upload the store image again before saving'
+        : 'Upload the store image before saving';
+
+      return AppError.validation(message, [{ path: field, message }]);
+    };
+
+    if (!storageKey) {
+      throw missing();
+    }
+
+    const extension = path.extname(storageKey);
+    const mimeType = MIME_BY_EXTENSION[extension];
+    const id = path.basename(storageKey, extension);
+
+    if (!mimeType) {
+      throw missing();
+    }
+
+    let size = 0;
+
+    try {
+      const info = await stat(storePath(storageKey));
+
+      if (!info.isFile()) {
+        throw missing(true);
+      }
+
+      size = info.size;
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+
+      throw missing(true);
+    }
+
+    if (size < 1 || size > MAX_PRODUCT_IMAGE_BYTES) {
+      throw missing(true);
+    }
+
+    return {
+      id,
+      provider: 'local',
+      storageKey,
+      url: `/uploads/${storageKey}`,
+      mimeType,
+      size,
+    };
+  },
+
+  async saveStoreImage(
+    file: { buffer: Buffer; mimeType: string },
+    profile: ImageOptimizeProfile,
+  ): Promise<StoredImage> {
+    return persistImage(file, 'stores', profile);
+  },
+
   async saveApplicationFile(file: { buffer: Buffer; mimeType: string }) {
     const mimeType = file.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
 
@@ -361,6 +443,23 @@ export const imageStorage = {
   async removeHero(storageKey: string) {
     try {
       await unlink(heroPath(storageKey));
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        return;
+      }
+
+      throw error;
+    }
+  },
+
+  async removeStore(storageKey: string) {
+    try {
+      await unlink(storePath(storageKey));
     } catch (error) {
       if (
         typeof error === 'object' &&

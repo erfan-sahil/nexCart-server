@@ -1,12 +1,20 @@
+import type { RequestHandler } from 'express';
 import { Router } from 'express';
 import { Permission } from '../constants/permissions';
 import { storeController } from '../controllers/store.controller';
 import { requirePermissions } from '../middleware/authorize';
+import { parseProductPayload } from '../middleware/parseProductPayload';
+import {
+  preferStoreImageFiles,
+  storeImageFiles,
+  uploadStoreImages,
+} from '../middleware/uploadStoreImages';
 import { validate } from '../middleware/validate';
 import {
   listStoresQuerySchema,
   storeIdParamsSchema,
   storeSlugParamsSchema,
+  updateStoreFieldsSchema,
   updateStoreSchema,
 } from '../validators/store.validator';
 
@@ -22,10 +30,20 @@ storeRouter.get(
 
 storeRouter.get('/me', ...requirePermissions(Permission.vendorStore), storeController.getMine);
 
+const validateStoreUpdate: RequestHandler = (req, res, next) => {
+  const files = storeImageFiles(req);
+  const hasImage = Boolean(files.logo?.length || files.banner?.length);
+
+  return validate({ body: hasImage ? updateStoreFieldsSchema : updateStoreSchema })(req, res, next);
+};
+
 storeRouter.patch(
   '/me',
   ...requirePermissions(Permission.vendorStore),
-  validate({ body: updateStoreSchema }),
+  uploadStoreImages,
+  parseProductPayload,
+  preferStoreImageFiles,
+  validateStoreUpdate,
   storeController.updateMine,
 );
 
