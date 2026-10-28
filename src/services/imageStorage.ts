@@ -10,6 +10,7 @@ import {
 } from '../constants/product';
 import type { ImageProvider } from '../types/product';
 import { AppError } from '../utils/AppError';
+import { optimizeImage, type ImageOptimizeProfile } from './imageOptimizer';
 
 export type StoredImage = {
   id: string;
@@ -148,46 +149,57 @@ export const ensureUploadDir = async () => {
   await mkdir(path.join(uploadRoot, 'hero'), { recursive: true });
 };
 
+const persistImage = async (
+  file: { buffer: Buffer; mimeType: string },
+  folder: 'products' | 'categories' | 'hero',
+  profile: ImageOptimizeProfile,
+): Promise<StoredImage> => {
+  const mimeType = file.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
+
+  if (!isProductImageMimeType(mimeType)) {
+    throw AppError.unsupportedMedia('Only JPEG, PNG, WebP, and GIF images are allowed');
+  }
+
+  if (file.buffer.length < 1 || file.buffer.length > MAX_PRODUCT_IMAGE_BYTES) {
+    throw AppError.payloadTooLarge('Each image must be 5 MB or smaller');
+  }
+
+  if (!hasSignature(mimeType, file.buffer)) {
+    throw AppError.validation('File content does not match its image type');
+  }
+
+  const optimized = await optimizeImage(file.buffer, mimeType, profile);
+  const id = createImageId();
+  const extension = PRODUCT_IMAGE_EXTENSIONS[optimized.mimeType];
+  const storageKey = `${folder}/${id}${extension}`;
+  const resolvePath =
+    folder === 'products' ? localPath : folder === 'categories' ? categoryPath : heroPath;
+  const target = resolvePath(storageKey);
+
+  await ensureUploadDir();
+
+  try {
+    await writeFile(target, optimized.buffer);
+  } catch (error) {
+    await unlink(target).catch(() => undefined);
+    throw error;
+  }
+
+  return {
+    id,
+    provider: 'local',
+    storageKey,
+    url: `/uploads/${storageKey}`,
+    mimeType: optimized.mimeType,
+    size: optimized.buffer.length,
+  };
+};
+
 // Local disk for now. The image id stays on the product if storage later moves
 // to a platform that issues its own id; that platform id belongs in storageKey.
 export const imageStorage = {
   async save(file: { buffer: Buffer; mimeType: string }): Promise<StoredImage> {
-    const mimeType = file.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
-
-    if (!isProductImageMimeType(mimeType)) {
-      throw AppError.unsupportedMedia('Only JPEG, PNG, WebP, and GIF images are allowed');
-    }
-
-    if (file.buffer.length < 1 || file.buffer.length > MAX_PRODUCT_IMAGE_BYTES) {
-      throw AppError.payloadTooLarge('Each image must be 5 MB or smaller');
-    }
-
-    if (!hasSignature(mimeType, file.buffer)) {
-      throw AppError.validation('File content does not match its image type');
-    }
-
-    const id = createImageId();
-    const extension = PRODUCT_IMAGE_EXTENSIONS[mimeType];
-    const storageKey = `products/${id}${extension}`;
-    const target = localPath(storageKey);
-
-    await ensureUploadDir();
-
-    try {
-      await writeFile(target, file.buffer);
-    } catch (error) {
-      await unlink(target).catch(() => undefined);
-      throw error;
-    }
-
-    return {
-      id,
-      provider: 'local',
-      storageKey,
-      url: `/uploads/${storageKey}`,
-      mimeType,
-      size: file.buffer.length,
-    };
+    return persistImage(file, 'products', 'catalog');
   },
 
   async readProductUpload(imageUrl: string): Promise<StoredImage> {
@@ -238,42 +250,7 @@ export const imageStorage = {
   },
 
   async saveCategoryImage(file: { buffer: Buffer; mimeType: string }): Promise<StoredImage> {
-    const mimeType = file.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
-
-    if (!isProductImageMimeType(mimeType)) {
-      throw AppError.unsupportedMedia('Only JPEG, PNG, WebP, and GIF images are allowed');
-    }
-
-    if (file.buffer.length < 1 || file.buffer.length > MAX_PRODUCT_IMAGE_BYTES) {
-      throw AppError.payloadTooLarge('Each image must be 5 MB or smaller');
-    }
-
-    if (!hasSignature(mimeType, file.buffer)) {
-      throw AppError.validation('File content does not match its image type');
-    }
-
-    const id = createImageId();
-    const extension = PRODUCT_IMAGE_EXTENSIONS[mimeType];
-    const storageKey = `categories/${id}${extension}`;
-    const target = categoryPath(storageKey);
-
-    await mkdir(path.join(uploadRoot, 'categories'), { recursive: true });
-
-    try {
-      await writeFile(target, file.buffer);
-    } catch (error) {
-      await unlink(target).catch(() => undefined);
-      throw error;
-    }
-
-    return {
-      id,
-      provider: 'local',
-      storageKey,
-      url: `/uploads/${storageKey}`,
-      mimeType,
-      size: file.buffer.length,
-    };
+    return persistImage(file, 'categories', 'catalog');
   },
 
   async readHeroUpload(imageUrl: string): Promise<StoredImage> {
@@ -334,42 +311,7 @@ export const imageStorage = {
   },
 
   async saveHeroImage(file: { buffer: Buffer; mimeType: string }): Promise<StoredImage> {
-    const mimeType = file.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
-
-    if (!isProductImageMimeType(mimeType)) {
-      throw AppError.unsupportedMedia('Only JPEG, PNG, WebP, and GIF images are allowed');
-    }
-
-    if (file.buffer.length < 1 || file.buffer.length > MAX_PRODUCT_IMAGE_BYTES) {
-      throw AppError.payloadTooLarge('Each image must be 5 MB or smaller');
-    }
-
-    if (!hasSignature(mimeType, file.buffer)) {
-      throw AppError.validation('File content does not match its image type');
-    }
-
-    const id = createImageId();
-    const extension = PRODUCT_IMAGE_EXTENSIONS[mimeType];
-    const storageKey = `hero/${id}${extension}`;
-    const target = heroPath(storageKey);
-
-    await mkdir(path.join(uploadRoot, 'hero'), { recursive: true });
-
-    try {
-      await writeFile(target, file.buffer);
-    } catch (error) {
-      await unlink(target).catch(() => undefined);
-      throw error;
-    }
-
-    return {
-      id,
-      provider: 'local',
-      storageKey,
-      url: `/uploads/${storageKey}`,
-      mimeType,
-      size: file.buffer.length,
-    };
+    return persistImage(file, 'hero', 'hero');
   },
 
   async saveApplicationFile(file: { buffer: Buffer; mimeType: string }) {
@@ -392,14 +334,19 @@ export const imageStorage = {
       throw AppError.validation('File content does not match its type');
     }
 
+    const optimized =
+      mimeType === 'application/pdf'
+        ? { buffer: file.buffer, mimeType }
+        : await optimizeImage(file.buffer, mimeType, 'document');
+
     const id = `file_${randomBytes(12).toString('hex')}`;
-    const storageKey = `applications/${id}${APPLICATION_EXTENSIONS[mimeType]}`;
+    const storageKey = `applications/${id}${APPLICATION_EXTENSIONS[optimized.mimeType]}`;
     const target = applicationPath(storageKey);
 
     await mkdir(path.join(uploadRoot, 'applications'), { recursive: true });
 
     try {
-      await writeFile(target, file.buffer);
+      await writeFile(target, optimized.buffer);
     } catch (error) {
       await unlink(target).catch(() => undefined);
       throw error;
@@ -407,7 +354,7 @@ export const imageStorage = {
 
     return {
       url: `/uploads/${storageKey}`,
-      mimeType,
+      mimeType: optimized.mimeType,
     };
   },
 
