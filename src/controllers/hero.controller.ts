@@ -4,7 +4,11 @@ import { imageStorage } from '../services/imageStorage';
 import { AppError } from '../utils/AppError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/sendResponse';
-import type { UpsertHeroInput } from '../validators/hero.validator';
+import type {
+  HeroIndexParams,
+  SetHeroActiveInput,
+  UpsertHeroInput,
+} from '../validators/hero.validator';
 
 const absoluteUploadUrl = (req: Request, url: string) => {
   const host = req.get('host');
@@ -26,6 +30,16 @@ const upsertHero = asyncHandler(async (req: Request, res: Response) => {
   const hero = await heroService.upsert(req.body as UpsertHeroInput);
 
   sendSuccess(res, hero, { message: 'Hero section saved' });
+});
+
+const setHeroActive = asyncHandler(async (req: Request, res: Response) => {
+  const { index } = req.params as unknown as HeroIndexParams;
+  const { isActive } = req.body as SetHeroActiveInput;
+  const hero = await heroService.setActive(index, isActive);
+
+  sendSuccess(res, hero, {
+    message: isActive ? 'Hero activated' : 'Hero deactivated',
+  });
 });
 
 const uploadHeroImage = asyncHandler(async (req: Request, res: Response) => {
@@ -53,5 +67,6 @@ const uploadHeroImage = asyncHandler(async (req: Request, res: Response) => {
 export const heroController = {
   getHero,
   upsertHero,
+  setHeroActive,
   uploadHeroImage,
 };

@@ -62,6 +62,14 @@ const productVariantSchema = new Schema(
       default: null,
       min: 0,
     },
+    dealStartsAt: {
+      type: Date,
+      default: null,
+    },
+    dealEndsAt: {
+      type: Date,
+      default: null,
+    },
     stock: {
       type: Number,
       required: true,

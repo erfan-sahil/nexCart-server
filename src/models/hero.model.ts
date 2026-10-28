@@ -1,14 +1,8 @@
 import { Schema, model, type InferSchemaType, type Types } from 'mongoose';
 import { HERO_KEY, HERO_LIMITS } from '../constants/hero';
 
-const heroSchema = new Schema(
+const heroSlideSchema = new Schema(
   {
-    key: {
-      type: String,
-      required: true,
-      unique: true,
-      default: HERO_KEY,
-    },
     eyebrow: {
       type: String,
       required: [true, 'Eyebrow is required'],
@@ -42,6 +36,27 @@ const heroSchema = new Schema(
       trim: true,
       minlength: [1, 'Image is required'],
       maxlength: [HERO_LIMITS.image, `Image URL must be ${HERO_LIMITS.image} characters or fewer`],
+    },
+    isActive: {
+      type: Boolean,
+      required: [true, 'Active status is required'],
+      default: true,
+    },
+  },
+  { _id: false },
+);
+
+const heroSchema = new Schema(
+  {
+    key: {
+      type: String,
+      required: true,
+      unique: true,
+      default: HERO_KEY,
+    },
+    slides: {
+      type: [heroSlideSchema],
+      default: [],
     },
   },
   {

@@ -40,7 +40,19 @@ const tagSchema = z
   );
 
 const productSortSchema = z
-  .enum(['name', '-name', 'createdAt', '-createdAt', 'rating', '-rating'])
+  .enum([
+    'name',
+    '-name',
+    'createdAt',
+    '-createdAt',
+    'rating',
+    '-rating',
+    'newest',
+    'bestsellers',
+    'price-asc',
+    'price-desc',
+    'featured',
+  ])
   .default('-createdAt');
 
 const attributeValueSchema = z
@@ -201,13 +213,30 @@ const listFields = {
   sort: productSortSchema,
 };
 
-export const listPublicProductsQuerySchema = z.object({
-  ...listFields,
-  categoryId: objectIdSchema.optional(),
-  storeId: objectIdSchema.optional(),
-  tag: z.string().trim().min(1).max(40).optional(),
-  isFeatured: booleanQuery.optional(),
-});
+export const listPublicProductsQuerySchema = z
+  .object({
+    ...listFields,
+    categoryId: objectIdSchema.optional(),
+    storeId: objectIdSchema.optional(),
+    tag: z.string().trim().min(1).max(40).optional(),
+    isFeatured: booleanQuery.optional(),
+    minPrice: z.coerce.number().finite().min(0).optional(),
+    maxPrice: z.coerce.number().finite().min(0).optional(),
+    minRating: z.coerce.number().finite().min(0).max(5).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.minPrice !== undefined &&
+      value.maxPrice !== undefined &&
+      value.minPrice > value.maxPrice
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['minPrice'],
+        message: 'Minimum price cannot be greater than the maximum price',
+      });
+    }
+  });
 
 export const listMineProductsQuerySchema = z.object({
   ...listFields,

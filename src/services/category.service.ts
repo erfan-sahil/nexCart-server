@@ -2,6 +2,7 @@ import type { FilterQuery, Types } from 'mongoose';
 import { MAX_CATEGORY_LEVEL } from '../constants/category';
 import { CategoryAttributeModel } from '../models/categoryAttribute.model';
 import { CategoryModel, type Category } from '../models/category.model';
+import { ProductModel } from '../models/product.model';
 import type {
   CategoryDetailDto,
   CategoryDto,
@@ -94,7 +95,7 @@ const toDetail = async (record: CategoryRecord): Promise<CategoryDetailDto> => {
 
 const buildTree = (items: CategoryDto[]): CategoryTreeNode[] => {
   const nodes = new Map<string, CategoryTreeNode>(
-    items.map((item) => [item.id, { ...item, children: [] }]),
+    items.map((item) => [item.id, { ...item, children: [], productCount: 0 }]),
   );
   const roots: CategoryTreeNode[] = [];
 
@@ -110,6 +111,34 @@ const buildTree = (items: CategoryDto[]): CategoryTreeNode[] => {
       roots.push(node);
     }
   }
+
+  return roots;
+};
+
+const attachProductCounts = async (roots: CategoryTreeNode[]) => {
+  const grouped = await ProductModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+    {
+      $match: {
+        approvalStatus: 'approved',
+        status: 'active',
+        isPublished: true,
+      },
+    },
+    { $group: { _id: '$categoryId', count: { $sum: 1 } } },
+  ]);
+  const counts = new Map(grouped.map((row) => [String(row._id), row.count]));
+
+  const fill = (node: CategoryTreeNode): number => {
+    const total =
+      (counts.get(node.id) ?? 0) + node.children.reduce((sum, child) => sum + fill(child), 0);
+
+    node.productCount = total;
+    return total;
+  };
+
+  roots.forEach((root) => {
+    fill(root);
+  });
 
   return roots;
 };
@@ -282,7 +311,7 @@ export const categoryService = {
 
     const items = await CategoryModel.find(filter).sort({ sortOrder: 1, name: 1 }).lean();
 
-    return buildTree(items.map((item) => toDto(item)));
+    return attachProductCounts(buildTree(items.map((item) => toDto(item))));
   },
 
   async getById(id: string) {

@@ -53,6 +53,7 @@ const SORTS: Record<ListStoresQuery['sort'], Record<string, 1 | -1>> = {
   '-joinedAt': { joinedAt: -1 },
   rating: { ratingAverage: 1 },
   '-rating': { ratingAverage: -1 },
+  popular: { totalSales: -1, ratingAverage: -1, ratingCount: -1, totalProducts: -1 },
 };
 
 const toAddressDto = (address: AddressSource | null | undefined): VendorAddressDto => ({

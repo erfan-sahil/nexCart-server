@@ -132,7 +132,7 @@ export const listStoresQuerySchema = z.object({
   search: z.string().trim().min(1).max(120).optional(),
   categoryId: objectIdSchema.optional(),
   sort: z
-    .enum(['name', '-name', 'joinedAt', '-joinedAt', 'rating', '-rating'])
+    .enum(['name', '-name', 'joinedAt', '-joinedAt', 'rating', '-rating', 'popular'])
     .default('-joinedAt'),
 });
 

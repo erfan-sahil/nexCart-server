@@ -27,11 +27,15 @@ const discountTypeSchema = z.enum(['percent', 'amount']).nullable().optional();
 
 const discountValueSchema = z.number().finite().min(0).max(MAX_VARIANT_PRICE).nullable().optional();
 
+const dealDateSchema = z.iso.datetime({ offset: true }).nullable().optional();
+
 const variantFields = {
   sku: skuSchema,
   price: moneySchema,
   discountType: discountTypeSchema,
   discountValue: discountValueSchema,
+  dealStartsAt: dealDateSchema,
+  dealEndsAt: dealDateSchema,
   stock: z.number().int().min(0).max(MAX_VARIANT_STOCK).optional(),
   imageId: z.union([imageIdSchema, z.literal('')]).optional(),
   attributes: z.array(attributeValueSchema).max(20).optional(),
@@ -45,6 +49,8 @@ const refineVariant = (
     price?: number;
     discountType?: 'percent' | 'amount' | null;
     discountValue?: number | null;
+    dealStartsAt?: string | null;
+    dealEndsAt?: string | null;
     attributes?: { attributeId: string }[];
     simple?: boolean;
   },
@@ -103,6 +109,35 @@ const refineVariant = (
     });
   }
 
+  const dealStart = value.dealStartsAt;
+  const dealEnd = value.dealEndsAt;
+  const startSet = value.dealStartsAt !== undefined;
+  const endSet = value.dealEndsAt !== undefined;
+
+  if (startSet && endSet && ((dealStart && !dealEnd) || (!dealStart && dealEnd))) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['dealEndsAt'],
+      message: 'Set both a start and an end for the deal',
+    });
+  }
+
+  if (dealStart && dealEnd && dealStart >= dealEnd) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['dealEndsAt'],
+      message: 'Deal end must be after the start',
+    });
+  }
+
+  if ((dealStart || dealEnd) && type === null) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['discountType'],
+      message: 'A flash deal needs a discount',
+    });
+  }
+
   const attributes = new Set<string>();
 
   value.attributes?.forEach((attribute, index) => {
@@ -132,6 +167,8 @@ export const createVariantSchema = z
     price: variantFields.price,
     discountType: variantFields.discountType,
     discountValue: variantFields.discountValue,
+    dealStartsAt: variantFields.dealStartsAt,
+    dealEndsAt: variantFields.dealEndsAt,
     stock: variantFields.stock,
     imageId: variantFields.imageId,
     attributes: variantFields.attributes,
@@ -148,6 +185,8 @@ export const updateVariantSchema = z
     price: variantFields.price.optional(),
     discountType: variantFields.discountType,
     discountValue: variantFields.discountValue,
+    dealStartsAt: variantFields.dealStartsAt,
+    dealEndsAt: variantFields.dealEndsAt,
     stock: variantFields.stock,
     imageId: variantFields.imageId,
     attributes: variantFields.attributes,

@@ -47,6 +47,8 @@ type VariantSource = {
   price: number;
   discountType: DiscountType | null;
   discountValue: number | null;
+  dealStartsAt: Date | null;
+  dealEndsAt: Date | null;
   stock: number;
   imageId: string;
   attributes: StoredVariantAttribute[];
@@ -134,6 +136,156 @@ const readDiscount = (
   assertDiscount(price, type, value);
 
   return { type, value };
+};
+
+const readDealDate = (value: string | null | undefined) => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    throw AppError.validation('Enter a valid deal date');
+  }
+
+  return date;
+};
+
+const resolveDealWindow = (
+  discountType: DiscountType | null,
+  current: { dealStartsAt: Date | null; dealEndsAt: Date | null },
+  input: { dealStartsAt?: string | null; dealEndsAt?: string | null },
+  partial: boolean,
+) => {
+  const dealStartsAt =
+    input.dealStartsAt === undefined
+      ? partial
+        ? current.dealStartsAt
+        : null
+      : readDealDate(input.dealStartsAt);
+  const dealEndsAt =
+    input.dealEndsAt === undefined
+      ? partial
+        ? current.dealEndsAt
+        : null
+      : readDealDate(input.dealEndsAt);
+
+  if (!discountType) {
+    if (input.dealStartsAt || input.dealEndsAt) {
+      throw AppError.validation('A flash deal needs a discount');
+    }
+
+    return { dealStartsAt: null, dealEndsAt: null };
+  }
+
+  if (!dealStartsAt && !dealEndsAt) {
+    return { dealStartsAt: null, dealEndsAt: null };
+  }
+
+  if (!dealStartsAt || !dealEndsAt || dealStartsAt >= dealEndsAt) {
+    throw AppError.validation(
+      !dealStartsAt || !dealEndsAt
+        ? 'Set both a start and an end for the deal'
+        : 'Deal end must be after the start',
+    );
+  }
+
+  return { dealStartsAt, dealEndsAt };
+};
+
+const savingsFor = (
+  price: number,
+  discountType: DiscountType | null,
+  discountValue: number | null,
+) => {
+  if (!discountType || discountValue === null || price <= 0) {
+    return 0;
+  }
+
+  if (discountType === 'percent') {
+    return discountValue / 100;
+  }
+
+  return Math.min(1, discountValue / price);
+};
+
+const refreshListing = async (productId: Types.ObjectId) => {
+  const variants = await ProductVariantModel.find({ productId, status: 'active' }).select(
+    'price discountType discountValue stock dealStartsAt dealEndsAt',
+  );
+  const now = new Date();
+  let hasStock = false;
+  let minPrice: number | null = null;
+  let minOriginalPrice: number | null = null;
+
+  type DealWindow = { starts: Date; ends: Date; savings: number };
+  const activeDeals: DealWindow[] = [];
+  const upcomingDeals: DealWindow[] = [];
+
+  for (const variant of variants) {
+    const discountType =
+      variant.discountType === 'percent' || variant.discountType === 'amount'
+        ? variant.discountType
+        : null;
+    const discountValue = variant.discountValue ?? null;
+    const currentPrice = currentPriceFor(variant.price, discountType, discountValue);
+    minPrice = minPrice === null ? currentPrice : Math.min(minPrice, currentPrice);
+    minOriginalPrice =
+      minOriginalPrice === null ? variant.price : Math.min(minOriginalPrice, variant.price);
+
+    if (variant.stock > 0) {
+      hasStock = true;
+    }
+
+    if (
+      variant.stock <= 0 ||
+      !discountType ||
+      !variant.dealStartsAt ||
+      !variant.dealEndsAt ||
+      variant.dealStartsAt >= variant.dealEndsAt ||
+      variant.dealEndsAt <= now
+    ) {
+      continue;
+    }
+
+    const window = {
+      starts: variant.dealStartsAt,
+      ends: variant.dealEndsAt,
+      savings: savingsFor(variant.price, discountType, discountValue),
+    };
+
+    if (variant.dealStartsAt <= now) {
+      activeDeals.push(window);
+    } else {
+      upcomingDeals.push(window);
+    }
+  }
+
+  activeDeals.sort(
+    (left, right) => left.ends.getTime() - right.ends.getTime() || right.savings - left.savings,
+  );
+  upcomingDeals.sort(
+    (left, right) =>
+      left.starts.getTime() - right.starts.getTime() || left.ends.getTime() - right.ends.getTime(),
+  );
+  const chosen = activeDeals[0] ?? upcomingDeals[0] ?? null;
+
+  await ProductModel.updateOne(
+    { _id: productId },
+    {
+      $set: {
+        listing: {
+          hasStock,
+          minPrice,
+          minOriginalPrice,
+          dealStartsAt: chosen?.starts ?? null,
+          dealEndsAt: chosen?.ends ?? null,
+          dealSavings: chosen?.savings ?? 0,
+        },
+      },
+    },
+  );
 };
 
 const toStatus = (status: string): VariantStatus => {
@@ -288,6 +440,8 @@ const readVariant = (variant: VariantDocument): VariantSource => {
         ? plain.discountType
         : null,
     discountValue: plain.discountValue ?? null,
+    dealStartsAt: plain.dealStartsAt ?? null,
+    dealEndsAt: plain.dealEndsAt ?? null,
     stock: plain.stock,
     imageId: plain.imageId ?? '',
     attributes: (plain.attributes ?? []).map((attribute) => ({
@@ -358,6 +512,8 @@ const mapVariants = async (
       price: variant.price,
       discountType: variant.discountType,
       discountValue: variant.discountValue,
+      dealStartsAt: variant.dealStartsAt ? variant.dealStartsAt.toISOString() : null,
+      dealEndsAt: variant.dealEndsAt ? variant.dealEndsAt.toISOString() : null,
       currentPrice: currentPriceFor(variant.price, variant.discountType, variant.discountValue),
       stock: variant.stock,
       image: image
@@ -717,6 +873,12 @@ export const variantService = {
 
     const price = money(input.price);
     const discount = readDiscount(price, input.discountType, input.discountValue);
+    const deal = resolveDealWindow(
+      discount.type,
+      { dealStartsAt: null, dealEndsAt: null },
+      input,
+      false,
+    );
 
     const { attributes, optionKey } = await resolveCreateAttributes(product, input);
     const currentDefault = await ProductVariantModel.findOne({
@@ -736,6 +898,8 @@ export const variantService = {
       price,
       discountType: discount.type,
       discountValue: discount.value,
+      dealStartsAt: deal.dealStartsAt,
+      dealEndsAt: deal.dealEndsAt,
       stock: input.stock ?? 0,
       imageId: input.imageId ?? '',
       attributes,
@@ -750,6 +914,8 @@ export const variantService = {
       await restoreDefault(displaced);
       throw mapDuplicate(error);
     }
+
+    await refreshListing(product._id);
 
     return present(variant, product);
   },
@@ -787,9 +953,20 @@ export const variantService = {
           ? (variant.discountValue ?? null)
           : input.discountValue;
     const discount = readDiscount(price, discountType, discountValue);
+    const deal = resolveDealWindow(
+      discount.type,
+      {
+        dealStartsAt: variant.dealStartsAt ?? null,
+        dealEndsAt: variant.dealEndsAt ?? null,
+      },
+      input,
+      true,
+    );
     variant.price = price;
     variant.discountType = discount.type;
     variant.discountValue = discount.value;
+    variant.dealStartsAt = deal.dealStartsAt;
+    variant.dealEndsAt = deal.dealEndsAt;
 
     if (input.stock !== undefined) {
       variant.stock = input.stock;
@@ -842,6 +1019,8 @@ export const variantService = {
       throw mapDuplicate(error);
     }
 
+    await refreshListing(product._id);
+
     return present(variant, product);
   },
 
@@ -862,6 +1041,16 @@ export const variantService = {
       await promoteDefault(product._id, variant._id);
     }
 
+    await refreshListing(product._id);
+
     return { id: String(variant._id) };
+  },
+
+  async rebuildListings() {
+    const products = await ProductModel.find().select('_id');
+
+    for (const product of products) {
+      await refreshListing(product._id);
+    }
   },
 };

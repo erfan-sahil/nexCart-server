@@ -73,6 +73,7 @@ type ProductSource = {
   reviewNote: string;
   isFeatured: boolean;
   isPublished: boolean;
+  publishedAt: Date | null;
   ratingSummary: { average: number; count: number };
   createdAt: Date;
   updatedAt: Date;
@@ -94,6 +95,11 @@ const SORTS: Record<ProductSort, Record<string, 1 | -1>> = {
   '-createdAt': { createdAt: -1 },
   rating: { 'ratingSummary.average': 1 },
   '-rating': { 'ratingSummary.average': -1 },
+  newest: { publishedAt: -1, _id: -1 },
+  bestsellers: { 'metrics.unitsSold30d': -1, _id: 1 },
+  'price-asc': { 'listing.minPrice': 1, _id: 1 },
+  'price-desc': { 'listing.minPrice': -1, _id: 1 },
+  featured: { isFeatured: -1, publishedAt: -1, _id: 1 },
 };
 
 const isListed = (product: { status: string; isPublished: boolean; approvalStatus: string }) =>
@@ -460,6 +466,7 @@ const readProduct = (product: ProductDocument): ProductSource => {
     reviewNote: plain.reviewNote ?? '',
     isFeatured: plain.isFeatured,
     isPublished: plain.isPublished,
+    publishedAt: product.publishedAt ?? null,
     ratingSummary: {
       average: plain.ratingSummary?.average ?? 0,
       count: plain.ratingSummary?.count ?? 0,
@@ -602,6 +609,7 @@ const mapProducts = async (products: ProductSource[]): Promise<ProductDto[]> => 
       reviewNote: product.reviewNote,
       isFeatured: product.isFeatured,
       isPublished: product.isPublished,
+      publishedAt: product.publishedAt ? product.publishedAt.toISOString() : null,
       ratingSummary: {
         average: product.ratingSummary.average,
         count: product.ratingSummary.count,
@@ -644,13 +652,26 @@ const ensureVisible = async (product: ProductDocument, viewer?: ProductViewer) =
 };
 
 const applySearch = (filter: FilterQuery<Product>, search?: string) => {
-  if (!search) {
+  const terms = search
+    ?.trim()
+    .split(/\s+/)
+    .filter((term) => term.length > 0)
+    .slice(0, 8);
+
+  if (!terms || terms.length === 0) {
     return;
   }
 
-  const pattern = { $regex: escapeRegex(search), $options: 'i' };
+  const clauses = terms.map((term) => {
+    const pattern = { $regex: escapeRegex(term), $options: 'i' };
 
-  filter.$or = [{ name: pattern }, { shortDescription: pattern }, { tags: pattern }];
+    return {
+      $or: [{ name: pattern }, { shortDescription: pattern }, { tags: pattern }],
+    };
+  });
+
+  const existing = Array.isArray(filter.$and) ? filter.$and : [];
+  filter.$and = [...existing, ...clauses];
 };
 
 const applyCategory = async (filter: FilterQuery<Product>, categoryId?: string) => {
@@ -710,6 +731,12 @@ const publishState = (
   }
 
   return { nextStatus, nextPublished };
+};
+
+const stampPublishedAt = (product: ProductDocument) => {
+  if (isListed(product) && !product.publishedAt) {
+    product.publishedAt = new Date();
+  }
 };
 
 export const productService = {
@@ -799,6 +826,7 @@ export const productService = {
     product.status = nextStatus;
     product.isPublished = nextPublished;
     syncThumbnail(product);
+    stampPublishedAt(product);
 
     await assertSellable(readProduct(product));
 
@@ -942,6 +970,7 @@ export const productService = {
     product.approvalStatus = 'approved';
     product.isPublished = true;
     product.reviewNote = note ?? '';
+    stampPublishedAt(product);
     await product.save();
 
     if (!wasListed && isListed(product)) {
@@ -993,6 +1022,10 @@ export const productService = {
     return present(product);
   },
 
+  async presentMany(products: ProductDocument[]) {
+    return mapProducts(products.map((product) => readProduct(product)));
+  },
+
   async listPublic(query: ListPublicProductsQuery) {
     const filter: FilterQuery<Product> = {
       approvalStatus: 'approved',
@@ -1029,6 +1062,24 @@ export const productService = {
 
     if (query.isFeatured !== undefined) {
       filter.isFeatured = query.isFeatured;
+    }
+
+    if (query.minPrice !== undefined || query.maxPrice !== undefined) {
+      const price: { $gte?: number; $lte?: number } = {};
+
+      if (query.minPrice !== undefined) {
+        price.$gte = query.minPrice;
+      }
+
+      if (query.maxPrice !== undefined) {
+        price.$lte = query.maxPrice;
+      }
+
+      filter['listing.minPrice'] = price;
+    }
+
+    if (query.minRating !== undefined) {
+      filter['ratingSummary.average'] = { $gte: query.minRating };
     }
 
     applySearch(filter, query.search);

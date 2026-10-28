@@ -94,6 +94,71 @@ const ratingSummarySchema = new Schema(
   { _id: false, id: false },
 );
 
+const listingSchema = new Schema(
+  {
+    hasStock: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
+    minPrice: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    minOriginalPrice: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    dealStartsAt: {
+      type: Date,
+      default: null,
+    },
+    dealEndsAt: {
+      type: Date,
+      default: null,
+    },
+    dealSavings: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
+  },
+  { _id: false, id: false },
+);
+
+const metricsSchema = new Schema(
+  {
+    unitsSold30d: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
+    unitsSold7d: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
+    views7d: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
+    trendingScore: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
+  },
+  { _id: false, id: false },
+);
+
 const productSchema = new Schema(
   {
     storeId: {
@@ -179,6 +244,32 @@ const productSchema = new Schema(
       required: true,
       default: false,
     },
+    publishedAt: {
+      type: Date,
+      default: null,
+    },
+    listing: {
+      type: listingSchema,
+      required: true,
+      default: () => ({
+        hasStock: false,
+        minPrice: null,
+        minOriginalPrice: null,
+        dealStartsAt: null,
+        dealEndsAt: null,
+        dealSavings: 0,
+      }),
+    },
+    metrics: {
+      type: metricsSchema,
+      required: true,
+      default: () => ({
+        unitsSold30d: 0,
+        unitsSold7d: 0,
+        views7d: 0,
+        trendingScore: 0,
+      }),
+    },
     ratingSummary: {
       type: ratingSummarySchema,
       required: true,
@@ -197,6 +288,41 @@ productSchema.index({ approvalStatus: 1, status: 1, isPublished: 1, createdAt: -
 productSchema.index({ categoryId: 1, approvalStatus: 1, status: 1, isPublished: 1, createdAt: -1 });
 productSchema.index({ approvalStatus: 1, status: 1, isPublished: 1, isFeatured: 1, createdAt: -1 });
 productSchema.index({ tags: 1, approvalStatus: 1, status: 1, isPublished: 1 });
+productSchema.index({
+  approvalStatus: 1,
+  status: 1,
+  isPublished: 1,
+  'listing.hasStock': 1,
+  publishedAt: -1,
+});
+productSchema.index({
+  approvalStatus: 1,
+  status: 1,
+  isPublished: 1,
+  'listing.hasStock': 1,
+  'metrics.unitsSold30d': -1,
+});
+productSchema.index({
+  approvalStatus: 1,
+  status: 1,
+  isPublished: 1,
+  'listing.hasStock': 1,
+  'listing.dealEndsAt': 1,
+});
+productSchema.index({
+  approvalStatus: 1,
+  status: 1,
+  isPublished: 1,
+  'listing.hasStock': 1,
+  'metrics.trendingScore': -1,
+});
+productSchema.index({
+  categoryId: 1,
+  approvalStatus: 1,
+  status: 1,
+  isPublished: 1,
+  'listing.hasStock': 1,
+});
 
 export type Product = InferSchemaType<typeof productSchema> & {
   _id: Types.ObjectId;
