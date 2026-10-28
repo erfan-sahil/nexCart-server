@@ -23,6 +23,8 @@ export type StoredImage = {
 const LOCAL_KEY = /^products\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
 const CATEGORY_KEY = /^categories\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
 const CATEGORY_UPLOAD_PATH = /^\/uploads\/(categories\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
+const HERO_KEY = /^hero\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
+const HERO_UPLOAD_PATH = /^\/uploads\/(hero\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
 const PRODUCT_UPLOAD_PATH = /^\/uploads\/(products\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
 const MIME_BY_EXTENSION: Record<string, ProductImageMimeType> = {
   '.jpg': 'image/jpeg',
@@ -79,8 +81,8 @@ const applicationPath = (storageKey: string) => {
   return target;
 };
 
-const categoryPath = (storageKey: string) => {
-  if (!CATEGORY_KEY.test(storageKey)) {
+const storedPath = (storageKey: string, pattern: RegExp) => {
+  if (!pattern.test(storageKey)) {
     throw AppError.internal('Stored image path is invalid');
   }
 
@@ -94,9 +96,22 @@ const categoryPath = (storageKey: string) => {
   return target;
 };
 
+const categoryPath = (storageKey: string) => storedPath(storageKey, CATEGORY_KEY);
+
+const heroPath = (storageKey: string) => storedPath(storageKey, HERO_KEY);
+
 export const categoryImageStorageKey = (imageUrl: string) => {
   try {
     const match = CATEGORY_UPLOAD_PATH.exec(new URL(imageUrl).pathname);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+};
+
+export const heroImageStorageKey = (imageUrl: string) => {
+  try {
+    const match = HERO_UPLOAD_PATH.exec(new URL(imageUrl).pathname);
     return match?.[1] ?? null;
   } catch {
     return null;
@@ -130,6 +145,7 @@ const localPath = (storageKey: string) => {
 export const ensureUploadDir = async () => {
   await mkdir(path.join(uploadRoot, 'products'), { recursive: true });
   await mkdir(path.join(uploadRoot, 'categories'), { recursive: true });
+  await mkdir(path.join(uploadRoot, 'hero'), { recursive: true });
 };
 
 // Local disk for now. The image id stays on the product if storage later moves
@@ -260,6 +276,102 @@ export const imageStorage = {
     };
   },
 
+  async readHeroUpload(imageUrl: string): Promise<StoredImage> {
+    const storageKey = heroImageStorageKey(imageUrl);
+
+    if (!storageKey) {
+      throw AppError.validation('Upload the hero image before saving', [
+        { path: 'image', message: 'Upload the hero image before saving' },
+      ]);
+    }
+
+    const extension = path.extname(storageKey);
+    const mimeType = MIME_BY_EXTENSION[extension];
+    const id = path.basename(storageKey, extension);
+
+    if (!mimeType) {
+      throw AppError.validation('Upload the hero image before saving', [
+        { path: 'image', message: 'Upload the hero image before saving' },
+      ]);
+    }
+
+    let size = 0;
+
+    try {
+      const info = await stat(heroPath(storageKey));
+
+      if (!info.isFile()) {
+        throw AppError.validation('Upload the hero image again before saving', [
+          { path: 'image', message: 'Upload the hero image again before saving' },
+        ]);
+      }
+
+      size = info.size;
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+
+      throw AppError.validation('Upload the hero image again before saving', [
+        { path: 'image', message: 'Upload the hero image again before saving' },
+      ]);
+    }
+
+    if (size < 1 || size > MAX_PRODUCT_IMAGE_BYTES) {
+      throw AppError.validation('Upload the hero image again before saving', [
+        { path: 'image', message: 'Upload the hero image again before saving' },
+      ]);
+    }
+
+    return {
+      id,
+      provider: 'local',
+      storageKey,
+      url: `/uploads/${storageKey}`,
+      mimeType,
+      size,
+    };
+  },
+
+  async saveHeroImage(file: { buffer: Buffer; mimeType: string }): Promise<StoredImage> {
+    const mimeType = file.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
+
+    if (!isProductImageMimeType(mimeType)) {
+      throw AppError.unsupportedMedia('Only JPEG, PNG, WebP, and GIF images are allowed');
+    }
+
+    if (file.buffer.length < 1 || file.buffer.length > MAX_PRODUCT_IMAGE_BYTES) {
+      throw AppError.payloadTooLarge('Each image must be 5 MB or smaller');
+    }
+
+    if (!hasSignature(mimeType, file.buffer)) {
+      throw AppError.validation('File content does not match its image type');
+    }
+
+    const id = createImageId();
+    const extension = PRODUCT_IMAGE_EXTENSIONS[mimeType];
+    const storageKey = `hero/${id}${extension}`;
+    const target = heroPath(storageKey);
+
+    await mkdir(path.join(uploadRoot, 'hero'), { recursive: true });
+
+    try {
+      await writeFile(target, file.buffer);
+    } catch (error) {
+      await unlink(target).catch(() => undefined);
+      throw error;
+    }
+
+    return {
+      id,
+      provider: 'local',
+      storageKey,
+      url: `/uploads/${storageKey}`,
+      mimeType,
+      size: file.buffer.length,
+    };
+  },
+
   async saveApplicationFile(file: { buffer: Buffer; mimeType: string }) {
     const mimeType = file.mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
 
@@ -297,6 +409,23 @@ export const imageStorage = {
       url: `/uploads/${storageKey}`,
       mimeType,
     };
+  },
+
+  async removeHero(storageKey: string) {
+    try {
+      await unlink(heroPath(storageKey));
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        return;
+      }
+
+      throw error;
+    }
   },
 
   async removeCategory(storageKey: string) {
