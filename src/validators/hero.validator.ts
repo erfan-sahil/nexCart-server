@@ -47,13 +47,33 @@ const imageSchema = z
     }
   });
 
-export const upsertHeroSchema = z
+const heroSlideSchema = z
   .object({
     eyebrow: requiredText('Eyebrow', HERO_LIMITS.eyebrow),
     title: requiredText('Title', HERO_LIMITS.title),
     description: requiredText('Description', HERO_LIMITS.description),
     image: imageSchema,
+    isActive: z.boolean({ error: 'Active status is required' }),
   })
   .strict();
+
+export const upsertHeroSchema = z
+  .object({
+    slides: z
+      .array(heroSlideSchema, { error: 'Heroes are required' })
+      .max(HERO_LIMITS.slides, `Add ${HERO_LIMITS.slides} heroes or fewer`),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const active = value.slides.filter((slide) => slide.isActive).length;
+
+    if (active > HERO_LIMITS.active) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['slides'],
+        message: `Only ${HERO_LIMITS.active} heroes can be active at once`,
+      });
+    }
+  });
 
 export type UpsertHeroInput = z.infer<typeof upsertHeroSchema>;

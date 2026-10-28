@@ -652,13 +652,26 @@ const ensureVisible = async (product: ProductDocument, viewer?: ProductViewer) =
 };
 
 const applySearch = (filter: FilterQuery<Product>, search?: string) => {
-  if (!search) {
+  const terms = search
+    ?.trim()
+    .split(/\s+/)
+    .filter((term) => term.length > 0)
+    .slice(0, 8);
+
+  if (!terms || terms.length === 0) {
     return;
   }
 
-  const pattern = { $regex: escapeRegex(search), $options: 'i' };
+  const clauses = terms.map((term) => {
+    const pattern = { $regex: escapeRegex(term), $options: 'i' };
 
-  filter.$or = [{ name: pattern }, { shortDescription: pattern }, { tags: pattern }];
+    return {
+      $or: [{ name: pattern }, { shortDescription: pattern }, { tags: pattern }],
+    };
+  });
+
+  const existing = Array.isArray(filter.$and) ? filter.$and : [];
+  filter.$and = [...existing, ...clauses];
 };
 
 const applyCategory = async (filter: FilterQuery<Product>, categoryId?: string) => {

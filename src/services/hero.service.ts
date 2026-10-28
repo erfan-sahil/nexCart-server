@@ -1,35 +1,106 @@
-import { HERO_KEY } from '../constants/hero';
+import { HERO_KEY, HERO_LIMITS } from '../constants/hero';
 import { HeroModel } from '../models/hero.model';
-import type { HeroDto } from '../types/hero';
 import { AppError } from '../utils/AppError';
 import { isDuplicateKeyError } from '../utils/mongoError';
-import type { UpsertHeroInput } from '../validators/hero.validator';
 import { heroImageStorageKey, imageStorage } from './imageStorage';
 
-type HeroRecord = {
+type HeroSlide = {
   eyebrow: string;
   title: string;
   description: string;
   image: string;
+  isActive: boolean;
 };
 
-const toDto = (record: HeroRecord): HeroDto => ({
-  eyebrow: record.eyebrow,
-  title: record.title,
-  description: record.description,
-  image: record.image,
-});
+type HeroSection = {
+  slides: HeroSlide[];
+};
 
-const imageFieldError = (message: string) =>
-  AppError.validation(message, [{ path: 'image', message }]);
+type StoredSlide = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  image: string;
+  isActive?: boolean;
+};
 
-const assertImageAvailable = async (imageUrl: string) => {
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const readString = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+
+const readSlide = (value: unknown): StoredSlide | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const eyebrow = readString(value.eyebrow);
+  const title = readString(value.title);
+  const description = readString(value.description);
+  const image = readString(value.image);
+
+  if (!eyebrow || !title || !description || !image) {
+    return null;
+  }
+
+  return {
+    eyebrow,
+    title,
+    description,
+    image,
+    isActive: typeof value.isActive === 'boolean' ? value.isActive : undefined,
+  };
+};
+
+const toSlides = (records: readonly StoredSlide[]): HeroSlide[] => {
+  let active = 0;
+
+  return records.map((record) => {
+    const requested = record.isActive !== false;
+    const isActive = requested && active < HERO_LIMITS.active;
+
+    if (isActive) {
+      active += 1;
+    }
+
+    return {
+      eyebrow: record.eyebrow,
+      title: record.title,
+      description: record.description,
+      image: record.image,
+      isActive,
+    };
+  });
+};
+
+const slidesFromDocument = (value: unknown): HeroSlide[] => {
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  if (Array.isArray(value.slides)) {
+    return toSlides(
+      value.slides.flatMap((item) => {
+        const slide = readSlide(item);
+        return slide ? [slide] : [];
+      }),
+    );
+  }
+
+  const legacy = readSlide(value);
+  return legacy ? toSlides([legacy]) : [];
+};
+
+const imageFieldError = (index: number, message: string) =>
+  AppError.validation(message, [{ path: `slides.${index}.image`, message }]);
+
+const assertImageAvailable = async (imageUrl: string, index: number) => {
   let pathname = '';
 
   try {
     pathname = new URL(imageUrl).pathname;
   } catch {
-    throw imageFieldError('Image must be a valid URL');
+    throw imageFieldError(index, 'Image must be a valid URL');
   }
 
   if (!pathname.startsWith('/uploads/')) {
@@ -37,10 +108,18 @@ const assertImageAvailable = async (imageUrl: string) => {
   }
 
   if (!heroImageStorageKey(imageUrl)) {
-    throw imageFieldError('Upload the hero image before saving');
+    throw imageFieldError(index, 'Upload the hero image before saving');
   }
 
-  await imageStorage.readHeroUpload(imageUrl);
+  try {
+    await imageStorage.readHeroUpload(imageUrl);
+  } catch (error) {
+    if (error instanceof AppError && error.details?.[0]) {
+      throw imageFieldError(index, error.details[0].message);
+    }
+
+    throw error;
+  }
 };
 
 const removeStoredHeroImage = async (imageUrl: string) => {
@@ -53,18 +132,27 @@ const removeStoredHeroImage = async (imageUrl: string) => {
   await imageStorage.removeHero(storageKey).catch(() => undefined);
 };
 
-const saveHero = async (input: UpsertHeroInput) => {
-  const update = {
-    eyebrow: input.eyebrow,
-    title: input.title,
-    description: input.description,
-    image: input.image,
-  };
+const previousImages = (value: unknown) => {
+  if (!isRecord(value)) {
+    return [];
+  }
 
+  const images = Array.isArray(value.slides)
+    ? value.slides.flatMap((item) => {
+        const slide = readSlide(item);
+        return slide ? [slide.image] : [];
+      })
+    : [];
+  const legacy = readString(value.image);
+
+  return legacy ? [...images, legacy] : images;
+};
+
+const saveHero = async (slides: HeroSlide[]) => {
   try {
     return await HeroModel.findOneAndUpdate(
       { key: HERO_KEY },
-      { $set: update, $setOnInsert: { key: HERO_KEY } },
+      { $set: { slides }, $setOnInsert: { key: HERO_KEY } },
       { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true },
     ).lean();
   } catch (error) {
@@ -74,38 +162,61 @@ const saveHero = async (input: UpsertHeroInput) => {
 
     return HeroModel.findOneAndUpdate(
       { key: HERO_KEY },
-      { $set: update },
+      { $set: { slides } },
       { new: true, runValidators: true },
     ).lean();
   }
 };
 
+const assertActiveLimit = (slides: readonly HeroSlide[]) => {
+  const active = slides.filter((slide) => slide.isActive).length;
+
+  if (active > HERO_LIMITS.active) {
+    throw AppError.validation(`Only ${HERO_LIMITS.active} heroes can be active at once`, [
+      {
+        path: 'slides',
+        message: `Only ${HERO_LIMITS.active} heroes can be active at once`,
+      },
+    ]);
+  }
+};
+
 export const heroService = {
-  async get(): Promise<HeroDto> {
-    const hero = await HeroModel.findOne({ key: HERO_KEY }).lean();
+  async get(): Promise<HeroSection> {
+    const hero: unknown = await HeroModel.findOne({ key: HERO_KEY }).lean();
 
-    if (!hero) {
-      throw AppError.notFound('Hero section not found');
-    }
-
-    return toDto(hero);
+    return { slides: slidesFromDocument(hero) };
   },
 
-  async upsert(input: UpsertHeroInput): Promise<HeroDto> {
-    await assertImageAvailable(input.image);
+  async upsert(input: HeroSection): Promise<HeroSection> {
+    const slides: HeroSlide[] = input.slides.map((slide) => ({
+      eyebrow: slide.eyebrow,
+      title: slide.title,
+      description: slide.description,
+      image: slide.image,
+      isActive: slide.isActive,
+    }));
 
-    const existing = await HeroModel.findOne({ key: HERO_KEY }).select('image').lean();
-    const previousImage = existing?.image;
-    const hero = await saveHero(input);
+    assertActiveLimit(slides);
+    await Promise.all(slides.map((slide, index) => assertImageAvailable(slide.image, index)));
+
+    const existing: unknown = await HeroModel.findOne({ key: HERO_KEY }).lean();
+    const storedImages = previousImages(existing);
+    const hero = await saveHero(slides);
 
     if (!hero) {
       throw AppError.internal('Could not save the hero section');
     }
 
-    if (previousImage && previousImage !== input.image) {
-      await removeStoredHeroImage(previousImage);
-    }
+    const nextImages = new Set(slides.map((slide) => slide.image));
 
-    return toDto(hero);
+    await Promise.all(
+      storedImages
+        .filter((image, index, images) => images.indexOf(image) === index)
+        .filter((image) => !nextImages.has(image))
+        .map((image) => removeStoredHeroImage(image)),
+    );
+
+    return { slides };
   },
 };
