@@ -80,7 +80,7 @@ const mobilePayoutSchema = z
   })
   .strict();
 
-export const updateStoreSchema = z
+const updateStoreObjectSchema = z
   .object({
     name: z.string().trim().min(2).max(120).optional(),
     slug: slugSchema.optional(),
@@ -95,33 +95,36 @@ export const updateStoreSchema = z
     isActive: z.boolean().optional(),
     payout: z.discriminatedUnion('method', [bankPayoutSchema, mobilePayoutSchema]).optional(),
   })
-  .strict()
-  .superRefine((value, ctx) => {
-    if (!Object.values(value).some((field) => field !== undefined)) {
+  .strict();
+
+export const updateStoreFieldsSchema = updateStoreObjectSchema.superRefine((value, ctx) => {
+  if (!value.categoryIds) {
+    return;
+  }
+
+  const seen = new Set<string>();
+
+  value.categoryIds.forEach((categoryId, index) => {
+    if (seen.has(categoryId)) {
       ctx.addIssue({
         code: 'custom',
-        message: 'At least one field is required',
+        path: ['categoryIds', index],
+        message: 'Each category can be selected once',
       });
     }
 
-    if (!value.categoryIds) {
-      return;
-    }
-
-    const seen = new Set<string>();
-
-    value.categoryIds.forEach((categoryId, index) => {
-      if (seen.has(categoryId)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['categoryIds', index],
-          message: 'Each category can be selected once',
-        });
-      }
-
-      seen.add(categoryId);
-    });
+    seen.add(categoryId);
   });
+});
+
+export const updateStoreSchema = updateStoreFieldsSchema.superRefine((value, ctx) => {
+  if (!Object.values(value).some((field) => field !== undefined)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'At least one field is required',
+    });
+  }
+});
 
 export const listStoresQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),

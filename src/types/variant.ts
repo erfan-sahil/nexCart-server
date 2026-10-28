@@ -8,7 +8,9 @@ export type VariantDto = {
   productId: string;
   sku: string;
   price: number;
-  compareAtPrice: number | null;
+  discountType: 'percent' | 'amount' | null;
+  discountValue: number | null;
+  currentPrice: number;
   stock: number;
   image: ProductImageDto | null;
   attributes: ProductAttributeDto[];

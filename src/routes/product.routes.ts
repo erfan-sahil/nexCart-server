@@ -4,8 +4,7 @@ import { productController } from '../controllers/product.controller';
 import { variantController } from '../controllers/variant.controller';
 import { authenticateOptional } from '../middleware/authenticate';
 import { requirePermissions } from '../middleware/authorize';
-import { parseProductPayload } from '../middleware/parseProductPayload';
-import { uploadProductImages } from '../middleware/uploadProductImages';
+import { uploadProductImage, uploadProductImages } from '../middleware/uploadProductImages';
 import { validate } from '../middleware/validate';
 import {
   approveProductSchema,
@@ -58,10 +57,15 @@ productRouter.get(
 );
 
 productRouter.post(
+  '/image',
+  ...requirePermissions(Permission.vendorProducts),
+  uploadProductImage,
+  productController.uploadProductImage,
+);
+
+productRouter.post(
   '/',
   ...requirePermissions(Permission.vendorProducts),
-  uploadProductImages,
-  parseProductPayload,
   validate({ body: createProductSchema }),
   productController.createProduct,
 );

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  MAX_PRODUCT_IMAGES,
   PRODUCT_APPROVAL_STATUSES,
   PRODUCT_IMAGE_ID,
   PRODUCT_STATUSES,
@@ -16,6 +17,14 @@ const slugSchema = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must be lowercase and URL-friendly');
 
 const imageIdSchema = z.string().regex(PRODUCT_IMAGE_ID, 'Invalid image id');
+
+const productImageUrlSchema = z
+  .string()
+  .trim()
+  .max(2048)
+  .refine((value) => z.url().safeParse(value).success, {
+    message: 'Image must be a valid URL',
+  });
 
 const booleanQuery = z.enum(['true', 'false']).transform((value) => value === 'true');
 
@@ -116,9 +125,31 @@ const refineProduct = (
 };
 
 export const createProductSchema = z
-  .object(productFields)
+  .object({
+    ...productFields,
+    images: z
+      .array(productImageUrlSchema)
+      .min(1, 'Choose at least one image')
+      .max(MAX_PRODUCT_IMAGES, `A product can have at most ${MAX_PRODUCT_IMAGES} images`),
+  })
   .strict()
-  .superRefine((value, ctx) => refineProduct(value, ctx));
+  .superRefine((value, ctx) => {
+    refineProduct(value, ctx);
+
+    const images = new Set<string>();
+
+    value.images.forEach((image, index) => {
+      if (images.has(image)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['images', index],
+          message: 'Each image can be added once',
+        });
+      }
+
+      images.add(image);
+    });
+  });
 
 export const updateProductSchema = z
   .object({

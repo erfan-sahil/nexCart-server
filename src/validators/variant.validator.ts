@@ -23,35 +23,83 @@ const attributeValueSchema = z
   })
   .strict();
 
+const discountTypeSchema = z.enum(['percent', 'amount']).nullable().optional();
+
+const discountValueSchema = z.number().finite().min(0).max(MAX_VARIANT_PRICE).nullable().optional();
+
 const variantFields = {
   sku: skuSchema,
   price: moneySchema,
-  compareAtPrice: moneySchema.nullable().optional(),
+  discountType: discountTypeSchema,
+  discountValue: discountValueSchema,
   stock: z.number().int().min(0).max(MAX_VARIANT_STOCK).optional(),
   imageId: z.union([imageIdSchema, z.literal('')]).optional(),
   attributes: z.array(attributeValueSchema).max(20).optional(),
   status: z.enum(VARIANT_STATUSES).optional(),
   isDefault: z.boolean().optional(),
+  simple: z.boolean().optional(),
 };
 
 const refineVariant = (
   value: {
     price?: number;
-    compareAtPrice?: number | null;
+    discountType?: 'percent' | 'amount' | null;
+    discountValue?: number | null;
     attributes?: { attributeId: string }[];
+    simple?: boolean;
   },
   ctx: z.RefinementCtx,
 ) => {
-  if (
-    value.price !== undefined &&
-    value.compareAtPrice !== null &&
-    value.compareAtPrice !== undefined &&
-    value.compareAtPrice <= value.price
-  ) {
+  const type = value.discountType;
+  const discount = value.discountValue;
+  const hasType = type === 'percent' || type === 'amount';
+  const hasValue = typeof discount === 'number';
+
+  if (hasType && !hasValue) {
     ctx.addIssue({
       code: 'custom',
-      path: ['compareAtPrice'],
-      message: 'Compare-at price must be higher than the selling price',
+      path: ['discountValue'],
+      message: 'Enter a discount',
+    });
+  }
+
+  if (!hasType && hasValue && type !== null) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['discountType'],
+      message: 'Choose percentage or amount',
+    });
+  }
+
+  if (type === null && hasValue) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['discountValue'],
+      message: 'Clear the discount when no discount type is selected',
+    });
+  }
+
+  if (hasType && hasValue && discount <= 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['discountValue'],
+      message: 'Enter a discount greater than 0',
+    });
+  }
+
+  if (type === 'percent' && hasValue && discount > 100) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['discountValue'],
+      message: 'Percentage discount cannot be more than 100',
+    });
+  }
+
+  if (type === 'amount' && hasValue && value.price !== undefined && discount > value.price) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['discountValue'],
+      message: 'Discount amount cannot be more than the original price',
     });
   }
 
@@ -68,18 +116,28 @@ const refineVariant = (
 
     attributes.add(attribute.attributeId);
   });
+
+  if (value.simple === true && (value.attributes?.length ?? 0) > 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['attributes'],
+      message: 'A product without options cannot set variant options',
+    });
+  }
 };
 
 export const createVariantSchema = z
   .object({
     sku: variantFields.sku,
     price: variantFields.price,
-    compareAtPrice: variantFields.compareAtPrice,
+    discountType: variantFields.discountType,
+    discountValue: variantFields.discountValue,
     stock: variantFields.stock,
     imageId: variantFields.imageId,
     attributes: variantFields.attributes,
     status: variantFields.status,
     isDefault: variantFields.isDefault,
+    simple: variantFields.simple,
   })
   .strict()
   .superRefine((value, ctx) => refineVariant(value, ctx));
@@ -88,7 +146,8 @@ export const updateVariantSchema = z
   .object({
     sku: variantFields.sku.optional(),
     price: variantFields.price.optional(),
-    compareAtPrice: variantFields.compareAtPrice,
+    discountType: variantFields.discountType,
+    discountValue: variantFields.discountValue,
     stock: variantFields.stock,
     imageId: variantFields.imageId,
     attributes: variantFields.attributes,

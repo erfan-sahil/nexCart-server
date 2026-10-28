@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { imageStorage } from '../services/imageStorage';
 import { productService } from '../services/product.service';
 import type { ProductViewer } from '../types/product';
 import { AppError } from '../utils/AppError';
@@ -99,12 +100,38 @@ const getProduct = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, product, { message: 'Product fetched' });
 });
 
-const createProduct = asyncHandler(async (req: Request, res: Response) => {
-  const product = await productService.create(
-    actorId(req),
-    req.body as CreateProductInput,
-    imageUploads(req),
+const absoluteUploadUrl = (req: Request, url: string) => {
+  const host = req.get('host');
+
+  if (!host) {
+    throw AppError.internal('Could not build the file URL');
+  }
+
+  return `${req.protocol}://${host}${url}`;
+};
+
+const uploadProductImage = asyncHandler(async (req: Request, res: Response) => {
+  const file = req.file;
+
+  if (!file || !Buffer.isBuffer(file.buffer)) {
+    throw AppError.validation('An image file is required');
+  }
+
+  const mimeType = file.mimetype.split(';')[0]?.trim().toLowerCase() ?? '';
+  const stored = await imageStorage.save({
+    buffer: file.buffer,
+    mimeType,
+  });
+
+  sendSuccess(
+    res,
+    { url: absoluteUploadUrl(req, stored.url) },
+    { statusCode: 201, message: 'Product image uploaded' },
   );
+});
+
+const createProduct = asyncHandler(async (req: Request, res: Response) => {
+  const product = await productService.create(actorId(req), req.body as CreateProductInput);
 
   sendCreated(res, product, 'Product created');
 });
@@ -189,6 +216,7 @@ export const productController = {
   listForModeration,
   getProductBySlug,
   getProduct,
+  uploadProductImage,
   createProduct,
   updateProduct,
   deleteProduct,

@@ -15,6 +15,8 @@ import {
 import type { AttributeRole, AttributeType } from '../types/attribute';
 import type { ImageProvider, ProductOfferDto, ProductViewer } from '../types/product';
 import type { VariantDto, VariantStatus } from '../types/variant';
+
+type DiscountType = 'percent' | 'amount';
 import { AppError } from '../utils/AppError';
 import { duplicateKeyFields, isDuplicateKeyError } from '../utils/mongoError';
 import type {
@@ -43,7 +45,8 @@ type VariantSource = {
   productId: Types.ObjectId;
   sku: string;
   price: number;
-  compareAtPrice: number | null;
+  discountType: DiscountType | null;
+  discountValue: number | null;
   stock: number;
   imageId: string;
   attributes: StoredVariantAttribute[];
@@ -67,12 +70,71 @@ const SORTS: Record<VariantSort, Record<string, 1 | -1>> = {
 const emptyOffer = (): ProductOfferDto => ({
   minPrice: null,
   maxPrice: null,
+  minOriginalPrice: null,
+  maxOriginalPrice: null,
   inStock: false,
   variantCount: 0,
   defaultVariantId: null,
 });
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const currentPriceFor = (
+  price: number,
+  discountType: DiscountType | null,
+  discountValue: number | null,
+) => {
+  if (!discountType || discountValue === null) {
+    return price;
+  }
+
+  if (discountType === 'percent') {
+    return money(price * (1 - discountValue / 100));
+  }
+
+  return money(price - discountValue);
+};
+
+const assertDiscount = (
+  price: number,
+  discountType: DiscountType | null,
+  discountValue: number | null,
+) => {
+  if (discountType === null && discountValue === null) {
+    return;
+  }
+
+  if (discountType === null || discountValue === null) {
+    throw AppError.validation('Choose a discount type and enter a discount');
+  }
+
+  if (discountValue <= 0) {
+    throw AppError.validation('Enter a discount greater than 0');
+  }
+
+  if (discountType === 'percent' && discountValue > 100) {
+    throw AppError.validation('Percentage discount cannot be more than 100');
+  }
+
+  if (discountType === 'amount' && discountValue > price) {
+    throw AppError.validation('Discount amount cannot be more than the original price');
+  }
+};
+
+const readDiscount = (
+  price: number,
+  discountType: DiscountType | null | undefined,
+  discountValue: number | null | undefined,
+) => {
+  const type = discountType ?? null;
+  const value =
+    type === null || discountValue === null || discountValue === undefined
+      ? null
+      : money(discountValue);
+  assertDiscount(price, type, value);
+
+  return { type, value };
+};
 
 const toStatus = (status: string): VariantStatus => {
   if (status === 'active' || status === 'archived') {
@@ -134,12 +196,6 @@ const mapDuplicate = (error: unknown) => {
   return AppError.conflict('A variant with this value already exists');
 };
 
-const assertPrice = (price: number, compareAtPrice: number | null) => {
-  if (compareAtPrice !== null && compareAtPrice <= price) {
-    throw AppError.validation('Compare-at price must be higher than the selling price');
-  }
-};
-
 const storedToInput = (
   attributes: {
     attributeId: { toString(): string };
@@ -180,12 +236,6 @@ const assertImage = (imageId: string, images: ImageSource[]) => {
 
 const requiresActiveVariant = (product: { isPublished: boolean; approvalStatus: string }) =>
   product.isPublished || product.approvalStatus === 'submitted';
-
-const assertVendorCanChange = (product: { approvalStatus: string }) => {
-  if (product.approvalStatus === 'submitted') {
-    throw AppError.conflict('This product is waiting for admin approval');
-  }
-};
 
 const findOwnedProduct = async (userId: string, productId: string) => {
   const store = await StoreModel.findOne({ userId }).select('_id');
@@ -233,7 +283,11 @@ const readVariant = (variant: VariantDocument): VariantSource => {
     productId: variant.productId,
     sku: plain.sku,
     price: plain.price,
-    compareAtPrice: plain.compareAtPrice ?? null,
+    discountType:
+      plain.discountType === 'percent' || plain.discountType === 'amount'
+        ? plain.discountType
+        : null,
+    discountValue: plain.discountValue ?? null,
     stock: plain.stock,
     imageId: plain.imageId ?? '',
     attributes: (plain.attributes ?? []).map((attribute) => ({
@@ -302,7 +356,9 @@ const mapVariants = async (
       productId: String(variant.productId),
       sku: variant.sku,
       price: variant.price,
-      compareAtPrice: variant.compareAtPrice,
+      discountType: variant.discountType,
+      discountValue: variant.discountValue,
+      currentPrice: currentPriceFor(variant.price, variant.discountType, variant.discountValue),
       stock: variant.stock,
       image: image
         ? {
@@ -356,6 +412,33 @@ const present = async (variant: VariantDocument, product: ProductDocument) => {
   }
 
   return dto;
+};
+
+const resolveCreateAttributes = async (product: ProductDocument, input: CreateVariantInput) => {
+  if (input.simple === true) {
+    const existing = await ProductVariantModel.exists({ productId: product._id });
+
+    if (existing) {
+      throw AppError.conflict('A product without options can only have one price');
+    }
+
+    return {
+      attributes: [],
+      optionKey: variantOptionKey([]),
+    };
+  }
+
+  const plain = await ProductVariantModel.exists({
+    productId: product._id,
+    attributes: { $size: 0 },
+  });
+  const resolved = await resolveAttributes(String(product.categoryId), input.attributes);
+
+  if (plain && resolved.attributes.length > 0) {
+    throw AppError.conflict('This product is sold without options');
+  }
+
+  return resolved;
 };
 
 const resolveAttributes = async (
@@ -444,6 +527,8 @@ export const variantService = {
       _id: Types.ObjectId;
       minPrice: number;
       maxPrice: number;
+      minOriginalPrice: number;
+      maxOriginalPrice: number;
       variantCount: number;
       inStock: number;
       defaultVariantId: Types.ObjectId;
@@ -454,12 +539,43 @@ export const variantService = {
           status: 'active',
         },
       },
-      { $sort: { isDefault: -1, price: 1, createdAt: 1 } },
+      {
+        $addFields: {
+          currentPrice: {
+            $round: [
+              {
+                $switch: {
+                  branches: [
+                    {
+                      case: { $eq: ['$discountType', 'percent'] },
+                      then: {
+                        $multiply: [
+                          '$price',
+                          { $subtract: [1, { $divide: ['$discountValue', 100] }] },
+                        ],
+                      },
+                    },
+                    {
+                      case: { $eq: ['$discountType', 'amount'] },
+                      then: { $subtract: ['$price', '$discountValue'] },
+                    },
+                  ],
+                  default: '$price',
+                },
+              },
+              2,
+            ],
+          },
+        },
+      },
+      { $sort: { isDefault: -1, currentPrice: 1, createdAt: 1 } },
       {
         $group: {
           _id: '$productId',
-          minPrice: { $min: '$price' },
-          maxPrice: { $max: '$price' },
+          minPrice: { $min: '$currentPrice' },
+          maxPrice: { $max: '$currentPrice' },
+          minOriginalPrice: { $min: '$price' },
+          maxOriginalPrice: { $max: '$price' },
           variantCount: { $sum: 1 },
           inStock: { $max: { $cond: [{ $gt: ['$stock', 0] }, 1, 0] } },
           defaultVariantId: { $first: '$_id' },
@@ -471,6 +587,8 @@ export const variantService = {
       offers.set(String(row._id), {
         minPrice: row.minPrice,
         maxPrice: row.maxPrice,
+        minOriginalPrice: row.minOriginalPrice,
+        maxOriginalPrice: row.maxOriginalPrice,
         inStock: row.inStock === 1,
         variantCount: row.variantCount,
         defaultVariantId: String(row.defaultVariantId),
@@ -593,22 +711,14 @@ export const variantService = {
 
   async create(userId: string, productId: string, input: CreateVariantInput) {
     const product = await findOwnedProduct(userId, productId);
-    assertVendorCanChange(product);
 
     const images = productImages(product);
     assertImage(input.imageId ?? '', images);
 
     const price = money(input.price);
-    const compareAtPrice =
-      input.compareAtPrice === undefined || input.compareAtPrice === null
-        ? null
-        : money(input.compareAtPrice);
-    assertPrice(price, compareAtPrice);
+    const discount = readDiscount(price, input.discountType, input.discountValue);
 
-    const { attributes, optionKey } = await resolveAttributes(
-      String(product.categoryId),
-      input.attributes,
-    );
+    const { attributes, optionKey } = await resolveCreateAttributes(product, input);
     const currentDefault = await ProductVariantModel.findOne({
       productId: product._id,
       isDefault: true,
@@ -624,7 +734,8 @@ export const variantService = {
       productId: product._id,
       sku: input.sku,
       price,
-      compareAtPrice,
+      discountType: discount.type,
+      discountValue: discount.value,
       stock: input.stock ?? 0,
       imageId: input.imageId ?? '',
       attributes,
@@ -645,7 +756,6 @@ export const variantService = {
 
   async update(userId: string, productId: string, variantId: string, input: UpdateVariantInput) {
     const product = await findOwnedProduct(userId, productId);
-    assertVendorCanChange(product);
     const variant = await ProductVariantModel.findOne({ _id: variantId, productId: product._id });
 
     if (!variant) {
@@ -664,15 +774,22 @@ export const variantService = {
     }
 
     const price = input.price !== undefined ? money(input.price) : variant.price;
-    const compareAtPrice =
-      input.compareAtPrice === undefined
-        ? (variant.compareAtPrice ?? null)
-        : input.compareAtPrice === null
-          ? null
-          : money(input.compareAtPrice);
-    assertPrice(price, compareAtPrice);
+    const discountType =
+      input.discountType === undefined
+        ? variant.discountType === 'percent' || variant.discountType === 'amount'
+          ? variant.discountType
+          : null
+        : input.discountType;
+    const discountValue =
+      discountType === null
+        ? null
+        : input.discountValue === undefined
+          ? (variant.discountValue ?? null)
+          : input.discountValue;
+    const discount = readDiscount(price, discountType, discountValue);
     variant.price = price;
-    variant.compareAtPrice = compareAtPrice;
+    variant.discountType = discount.type;
+    variant.discountValue = discount.value;
 
     if (input.stock !== undefined) {
       variant.stock = input.stock;
@@ -730,7 +847,6 @@ export const variantService = {
 
   async remove(userId: string, productId: string, variantId: string) {
     const product = await findOwnedProduct(userId, productId);
-    assertVendorCanChange(product);
     const variant = await ProductVariantModel.findOne({ _id: variantId, productId: product._id });
 
     if (!variant) {

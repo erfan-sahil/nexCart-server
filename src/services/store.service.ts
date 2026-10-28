@@ -13,6 +13,7 @@ import type { VendorAddressDto } from '../types/vendorApplication';
 import { AppError } from '../utils/AppError';
 import { duplicateKeyFields, isDuplicateKeyError } from '../utils/mongoError';
 import { escapeRegex, slugify } from '../utils/slugify';
+import { imageStorage, storeImageStorageKey } from './imageStorage';
 import type {
   ListStoresQuery,
   SaveStorePayoutInput,
@@ -245,6 +246,46 @@ const assignAddress = (
   }
 };
 
+const assertStoreImage = async (imageUrl: string, field: 'logo' | 'banner') => {
+  if (!imageUrl) {
+    return;
+  }
+
+  let pathname = '';
+
+  try {
+    pathname = new URL(imageUrl).pathname;
+  } catch {
+    throw AppError.validation('Must be an http(s) URL', [
+      { path: field, message: 'Must be an http(s) URL' },
+    ]);
+  }
+
+  if (!pathname.startsWith('/uploads/')) {
+    return;
+  }
+
+  await imageStorage.readStoreUpload(imageUrl, field);
+};
+
+const releaseStoreImage = async (imageUrl: string) => {
+  const storageKey = storeImageStorageKey(imageUrl);
+
+  if (!storageKey) {
+    return;
+  }
+
+  await imageStorage.removeStore(storageKey).catch(() => undefined);
+};
+
+const releaseReplacedStoreImages = async (previous: string[], current: string[]) => {
+  const stillUsed = new Set(current.filter(Boolean));
+
+  await Promise.all(
+    previous.filter((url) => url && !stillUsed.has(url)).map((url) => releaseStoreImage(url)),
+  );
+};
+
 const findOwnStore = async (userId: string) => {
   const store = await StoreModel.findOne({ userId });
 
@@ -357,8 +398,14 @@ export const storeService = {
   },
 
   async removeForVendor(userId: string) {
+    const store = await StoreModel.findOne({ userId }).select('logo banner');
+
     await StorePayoutModel.deleteOne({ userId });
     await StoreModel.deleteOne({ userId });
+
+    if (store) {
+      await releaseReplacedStoreImages([store.logo, store.banner], []);
+    }
   },
 
   async setSuspendedForOwner(userId: string, suspended: boolean) {
@@ -423,62 +470,77 @@ export const storeService = {
     return vendorView(store);
   },
 
-  async updateMine(userId: string, input: UpdateStoreInput) {
-    const store = await findOwnStore(userId);
+  async updateMine(userId: string, input: UpdateStoreInput, rollbackKeys: string[] = []) {
+    const rollbackUploads = () =>
+      Promise.all(rollbackKeys.map((key) => imageStorage.removeStore(key).catch(() => undefined)));
 
-    if (input.name !== undefined) {
-      store.name = input.name;
-    }
-
-    if (input.slug !== undefined) {
-      store.slug = await resolveSlug(input.slug, store.name, String(store._id));
-    }
-
-    if (input.logo !== undefined) {
-      store.logo = input.logo;
-    }
-
-    if (input.banner !== undefined) {
-      store.banner = input.banner;
-    }
-
-    if (input.description !== undefined) {
-      store.description = input.description;
-    }
-
-    if (input.contact?.email !== undefined) {
-      store.contact.email = input.contact.email;
-    }
-
-    if (input.contact?.phone !== undefined) {
-      store.contact.phone = input.contact.phone;
-    }
-
-    if (input.address) {
-      assignAddress(store.address, input.address);
-    }
-
-    if (input.categoryIds !== undefined) {
-      await assertCategories(input.categoryIds);
-      store.categoryIds = input.categoryIds.map((id) => new Types.ObjectId(id));
-    }
-
-    if (input.returnPolicy !== undefined) {
-      store.returnPolicy = input.returnPolicy;
-    }
-
-    if (input.shippingPolicy !== undefined) {
-      store.shippingPolicy = input.shippingPolicy;
-    }
-
-    if (input.isActive !== undefined) {
-      store.isActive = input.isActive;
-    }
+    let store;
+    let previousLogo = '';
+    let previousBanner = '';
 
     try {
+      store = await findOwnStore(userId);
+      previousLogo = store.logo;
+      previousBanner = store.banner;
+      if (input.logo !== undefined) {
+        await assertStoreImage(input.logo, 'logo');
+        store.logo = input.logo;
+      }
+
+      if (input.banner !== undefined) {
+        await assertStoreImage(input.banner, 'banner');
+        store.banner = input.banner;
+      }
+
+      if (input.name !== undefined) {
+        store.name = input.name;
+      }
+
+      if (input.slug !== undefined) {
+        store.slug = await resolveSlug(input.slug, store.name, String(store._id));
+      }
+
+      if (input.description !== undefined) {
+        store.description = input.description;
+      }
+
+      if (input.contact?.email !== undefined) {
+        store.contact.email = input.contact.email;
+      }
+
+      if (input.contact?.phone !== undefined) {
+        store.contact.phone = input.contact.phone;
+      }
+
+      if (input.address) {
+        assignAddress(store.address, input.address);
+      }
+
+      if (input.categoryIds !== undefined) {
+        await assertCategories(input.categoryIds);
+        store.categoryIds = input.categoryIds.map((id) => new Types.ObjectId(id));
+      }
+
+      if (input.returnPolicy !== undefined) {
+        store.returnPolicy = input.returnPolicy;
+      }
+
+      if (input.shippingPolicy !== undefined) {
+        store.shippingPolicy = input.shippingPolicy;
+      }
+
+      if (input.isActive !== undefined) {
+        store.isActive = input.isActive;
+      }
+
       await store.save();
     } catch (error) {
+      await rollbackUploads();
       throw mapStoreDuplicate(error);
+    }
+
+    if (input.logo !== undefined || input.banner !== undefined) {
+      await releaseReplacedStoreImages([previousLogo, previousBanner], [store.logo, store.banner]);
     }
 
     if (input.payout) {
