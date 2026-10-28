@@ -10,6 +10,8 @@ export type VariantDto = {
   price: number;
   discountType: 'percent' | 'amount' | null;
   discountValue: number | null;
+  dealStartsAt: string | null;
+  dealEndsAt: string | null;
   currentPrice: number;
   stock: number;
   image: ProductImageDto | null;

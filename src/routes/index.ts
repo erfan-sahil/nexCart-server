@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { attributeRouter } from './attribute.routes';
 import { authRouter } from './auth.routes';
+import { catalogRouter } from './catalog.routes';
 import { categoryRouter } from './category.routes';
 import { healthRouter } from './health.routes';
 import { heroRouter } from './hero.routes';
@@ -20,5 +21,6 @@ apiRouter.use('/vendor-applications', vendorApplicationRouter);
 apiRouter.use('/stores', storeRouter);
 apiRouter.use('/attributes', attributeRouter);
 apiRouter.use('/categories', categoryRouter);
+apiRouter.use('/catalog', catalogRouter);
 apiRouter.use('/products', productRouter);
 apiRouter.use('/inventory', inventoryRouter);

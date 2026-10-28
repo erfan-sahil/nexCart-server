@@ -73,6 +73,7 @@ type ProductSource = {
   reviewNote: string;
   isFeatured: boolean;
   isPublished: boolean;
+  publishedAt: Date | null;
   ratingSummary: { average: number; count: number };
   createdAt: Date;
   updatedAt: Date;
@@ -460,6 +461,7 @@ const readProduct = (product: ProductDocument): ProductSource => {
     reviewNote: plain.reviewNote ?? '',
     isFeatured: plain.isFeatured,
     isPublished: plain.isPublished,
+    publishedAt: product.publishedAt ?? null,
     ratingSummary: {
       average: plain.ratingSummary?.average ?? 0,
       count: plain.ratingSummary?.count ?? 0,
@@ -602,6 +604,7 @@ const mapProducts = async (products: ProductSource[]): Promise<ProductDto[]> => 
       reviewNote: product.reviewNote,
       isFeatured: product.isFeatured,
       isPublished: product.isPublished,
+      publishedAt: product.publishedAt ? product.publishedAt.toISOString() : null,
       ratingSummary: {
         average: product.ratingSummary.average,
         count: product.ratingSummary.count,
@@ -712,6 +715,12 @@ const publishState = (
   return { nextStatus, nextPublished };
 };
 
+const stampPublishedAt = (product: ProductDocument) => {
+  if (isListed(product) && !product.publishedAt) {
+    product.publishedAt = new Date();
+  }
+};
+
 export const productService = {
   async create(userId: string, input: CreateProductInput) {
     const store = await findVendorStore(userId);
@@ -799,6 +808,7 @@ export const productService = {
     product.status = nextStatus;
     product.isPublished = nextPublished;
     syncThumbnail(product);
+    stampPublishedAt(product);
 
     await assertSellable(readProduct(product));
 
@@ -942,6 +952,7 @@ export const productService = {
     product.approvalStatus = 'approved';
     product.isPublished = true;
     product.reviewNote = note ?? '';
+    stampPublishedAt(product);
     await product.save();
 
     if (!wasListed && isListed(product)) {
@@ -991,6 +1002,10 @@ export const productService = {
     await product.save();
 
     return present(product);
+  },
+
+  async presentMany(products: ProductDocument[]) {
+    return mapProducts(products.map((product) => readProduct(product)));
   },
 
   async listPublic(query: ListPublicProductsQuery) {

@@ -82,6 +82,7 @@ export type ProductDto = {
   reviewNote: string;
   isFeatured: boolean;
   isPublished: boolean;
+  publishedAt: string | null;
   ratingSummary: {
     average: number;
     count: number;

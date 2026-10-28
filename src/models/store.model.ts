@@ -72,6 +72,7 @@ const storeSchema = new Schema(
 storeSchema.index({ isActive: 1, suspendedAt: 1, name: 1 });
 storeSchema.index({ isActive: 1, joinedAt: -1 });
 storeSchema.index({ isActive: 1, ratingAverage: -1 });
+storeSchema.index({ isActive: 1, suspendedAt: 1, totalSales: -1, ratingAverage: -1 });
 storeSchema.index({ categoryIds: 1, isActive: 1 });
 
 export type Store = InferSchemaType<typeof storeSchema> & {
