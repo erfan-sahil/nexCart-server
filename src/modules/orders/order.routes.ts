@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { requirePermissions } from '../../middleware/authorize';
 import { validate } from '../../middleware/validate';
+import { paymentController, paymentPermissions } from '../payments/payment.controller';
+import { initiatePaymentBodySchema } from '../payments/payment.validator';
 import { orderController, orderPermissions } from './order.controller';
 import {
   createOrderSchema,
@@ -30,6 +32,13 @@ orderRouter.get(
   ...requirePermissions(orderPermissions.list),
   validate({ query: listOrdersQuerySchema }),
   orderController.list,
+);
+
+orderRouter.post(
+  '/:orderId/payments',
+  ...requirePermissions(paymentPermissions.initiate),
+  validate({ params: orderIdParamsSchema, body: initiatePaymentBodySchema }),
+  paymentController.initiateForOrder,
 );
 
 orderRouter.get(

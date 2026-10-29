@@ -54,6 +54,18 @@ const envSchema = z.object({
   ORDER_DELIVERY_FEE: z.coerce.number().min(0).default(100),
   ORDER_PAYMENT_HOLD_MINUTES: z.coerce.number().int().positive().default(30),
   ORDER_CURRENCY: z.string().trim().length(3).default('BDT'),
+  PUBLIC_API_URL: z.string().url().default('http://localhost:4000'),
+  CLIENT_APP_URL: z.string().url().default('http://localhost:3000'),
+  SSLCOMMERZ_MOCK: z
+    .enum(['true', 'false', '1', '0'])
+    .default('true')
+    .transform((value) => value === 'true' || value === '1'),
+  SSLCOMMERZ_IS_SANDBOX: z
+    .enum(['true', 'false', '1', '0'])
+    .default('true')
+    .transform((value) => value === 'true' || value === '1'),
+  SSLCOMMERZ_STORE_ID: z.string().trim().default(''),
+  SSLCOMMERZ_STORE_PASSWORD: z.string().trim().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -79,4 +91,8 @@ if (
   throw new Error(
     'Set distinct JWT_ACCESS_SECRET and JWT_REFRESH_SECRET values before running in production',
   );
+}
+
+if (isProduction && env.SSLCOMMERZ_MOCK) {
+  throw new Error('Disable SSLCOMMERZ_MOCK before running in production');
 }

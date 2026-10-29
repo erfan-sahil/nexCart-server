@@ -26,6 +26,7 @@ export const IDEMPOTENCY_TTL_HOURS = 24;
 
 export const IdempotencyScope = {
   orderCreate: 'order.create',
+  paymentInitiate: 'payment.initiate',
 } as const;
 
 export type OrderPaymentMethod = (typeof ORDER_PAYMENT_METHODS)[number];
