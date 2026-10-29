@@ -5,6 +5,7 @@ import type { PaymentAttempt } from '../../models/paymentAttempt.model';
 import { AppError } from '../../utils/AppError';
 import { toOrderDto } from '../orders/order.mapper';
 import { releaseExpiredOrderHolds } from '../orders/stock';
+import { fulfillmentService } from '../fulfillment/fulfillment.service';
 import type { OrderDto } from '../orders/types';
 import { SSLCOMMERZ_SUCCESS_STATUSES } from './constants';
 import { amountsMatch, validateSslcommerzPayment } from './sslcommerz.client';
@@ -184,6 +185,8 @@ export const settlePayment = async (input: SettleInput): Promise<OrderDto | null
     gatewayStatus: input.gatewayStatus,
     gatewayPayload: input.gatewayPayload,
   });
+
+  await fulfillmentService.bootstrapForOrder(confirmed._id);
 
   return toOrderDto(confirmed);
 };
