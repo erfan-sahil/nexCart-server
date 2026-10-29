@@ -51,6 +51,9 @@ const envSchema = z.object({
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
   UPLOAD_DIR: z.string().trim().min(1).default('uploads'),
+  ORDER_DELIVERY_FEE: z.coerce.number().min(0).default(100),
+  ORDER_PAYMENT_HOLD_MINUTES: z.coerce.number().int().positive().default(30),
+  ORDER_CURRENCY: z.string().trim().length(3).default('BDT'),
 });
 
 const parsed = envSchema.safeParse(process.env);
