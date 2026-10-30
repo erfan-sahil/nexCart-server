@@ -39,6 +39,17 @@ export const orderIdParamsSchema = z.object({
   orderId: objectIdSchema,
 });
 
+export const trackOrderSchema = z.object({
+  orderNumber: z
+    .string()
+    .trim()
+    .min(4)
+    .max(32)
+    .transform((value) => value.toUpperCase()),
+  email: z.string().trim().toLowerCase().max(254).pipe(z.email('Enter a valid email address')),
+});
+
 export type QuoteOrderInput = z.infer<typeof quoteOrderSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type ListOrdersQuery = z.infer<typeof listOrdersQuerySchema>;
+export type TrackOrderInput = z.infer<typeof trackOrderSchema>;

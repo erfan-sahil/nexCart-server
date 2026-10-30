@@ -1,10 +1,13 @@
 import { Types } from 'mongoose';
 import { OrderModel } from '../../models/order.model';
+import { ProductModel } from '../../models/product.model';
+import { ShipmentModel } from '../../models/shipment.model';
+import { UserModel } from '../../models/user.model';
 import { AppError } from '../../utils/AppError';
 import { isDuplicateKeyError } from '../../utils/mongoError';
 import { runIdempotent } from '../../utils/idempotency';
 import { IdempotencyScope } from './constants';
-import { assertOrderOwner, customerObjectId, toOrderDto } from './order.mapper';
+import { assertOrderOwner, customerObjectId, toOrderDto, toOrderTrackingDto } from './order.mapper';
 import { buildOrderNumber, buildTotals, quoteCheckout, resolveCheckoutLines } from './pricing';
 import {
   releaseExpiredOrderHolds,
@@ -12,8 +15,15 @@ import {
   reserveStock,
   stockHoldExpiresAt,
 } from './stock';
-import type { OrderDto, OrderQuoteDto } from './types';
-import type { CreateOrderInput, ListOrdersQuery, QuoteOrderInput } from './order.validator';
+import type { OrderDto, OrderQuoteDto, OrderTrackingDto } from './types';
+import type {
+  CreateOrderInput,
+  ListOrdersQuery,
+  QuoteOrderInput,
+  TrackOrderInput,
+} from './order.validator';
+
+const TRACK_MISS = 'No order matches that number and email';
 
 type Actor = {
   customerId: string;
@@ -155,5 +165,34 @@ export const orderService = {
     assertOrderOwner(order, actor.customerId);
 
     return toOrderDto(order);
+  },
+
+  async track(input: TrackOrderInput): Promise<OrderTrackingDto> {
+    await releaseExpiredOrderHolds();
+
+    const order = await OrderModel.findOne({ orderNumber: input.orderNumber });
+
+    if (!order) {
+      throw AppError.notFound(TRACK_MISS);
+    }
+
+    const customer = await UserModel.findById(order.customerId).select('email');
+
+    if (!customer || customer.email !== input.email) {
+      throw AppError.notFound(TRACK_MISS);
+    }
+
+    const [shipment, products] = await Promise.all([
+      ShipmentModel.findOne({ orderId: order._id }),
+      ProductModel.find({
+        _id: { $in: [...new Set(order.items.map((item) => item.productId))] },
+      }).select('slug images thumbnailId'),
+    ]);
+
+    return toOrderTrackingDto(
+      order,
+      shipment,
+      new Map(products.map((product) => [String(product._id), product])),
+    );
   },
 };

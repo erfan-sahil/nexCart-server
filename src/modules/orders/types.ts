@@ -60,3 +60,29 @@ export type OrderQuoteDto = {
   items: OrderItemDto[];
   totals: OrderTotalsDto;
 };
+
+export type OrderTrackingItemDto = {
+  name: string;
+  slug: string;
+  imageUrl: string;
+  quantity: number;
+  unitPrice: number;
+};
+
+export type OrderTrackingDto = {
+  orderNumber: string;
+  status: OrderStatus;
+  paymentMethod: OrderPaymentMethod;
+  paymentStatus: OrderPaymentStatus;
+  placedAt: string;
+  shipTo: Omit<OrderShippingDto, 'phone'>;
+  carrier: string;
+  trackingNumber: string;
+  packedAt: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  fulfillmentStartedAt: string | null;
+  grandTotal: number;
+  currency: string;
+  items: OrderTrackingItemDto[];
+};

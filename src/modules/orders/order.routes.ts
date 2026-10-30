@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requirePermissions } from '../../middleware/authorize';
+import { trackLimiter } from '../../middleware/rateLimiter';
 import { validate } from '../../middleware/validate';
 import { paymentController, paymentPermissions } from '../payments/payment.controller';
 import { initiatePaymentBodySchema } from '../payments/payment.validator';
@@ -9,6 +10,7 @@ import {
   listOrdersQuerySchema,
   orderIdParamsSchema,
   quoteOrderSchema,
+  trackOrderSchema,
 } from './order.validator';
 
 export const orderRouter = Router();
@@ -32,6 +34,13 @@ orderRouter.get(
   ...requirePermissions(orderPermissions.list),
   validate({ query: listOrdersQuerySchema }),
   orderController.list,
+);
+
+orderRouter.post(
+  '/track',
+  trackLimiter,
+  validate({ body: trackOrderSchema }),
+  orderController.track,
 );
 
 orderRouter.post(

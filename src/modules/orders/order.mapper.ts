@@ -1,7 +1,9 @@
 import { Types } from 'mongoose';
 import type { Order } from '../../models/order.model';
+import type { Product } from '../../models/product.model';
+import type { Shipment } from '../../models/shipment.model';
 import { AppError } from '../../utils/AppError';
-import type { OrderDto, OrderShippingDto } from './types';
+import type { OrderDto, OrderShippingDto, OrderTrackingDto } from './types';
 
 const toShippingDto = (shipping: Order['shipping']): OrderShippingDto => ({
   recipientName: shipping.recipientName,
@@ -47,6 +49,58 @@ export const toOrderDto = (order: Order): OrderDto => ({
   stockHoldExpiresAt: order.stockHoldExpiresAt?.toISOString() ?? null,
   createdAt: order.createdAt.toISOString(),
   updatedAt: order.updatedAt.toISOString(),
+});
+
+const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
+
+const productImageUrl = (product: Pick<Product, 'thumbnailId' | 'images'> | undefined) => {
+  if (!product) {
+    return '';
+  }
+
+  const thumbnail = product.images.find((image) => image.imageId === product.thumbnailId);
+
+  return thumbnail?.url ?? product.images[0]?.url ?? '';
+};
+
+export const toOrderTrackingDto = (
+  order: Order,
+  shipment: Shipment | null,
+  products: Map<string, Pick<Product, 'slug' | 'thumbnailId' | 'images'>>,
+): OrderTrackingDto => ({
+  orderNumber: order.orderNumber,
+  status: order.status,
+  paymentMethod: order.paymentMethod,
+  paymentStatus: order.paymentStatus,
+  placedAt: order.createdAt.toISOString(),
+  shipTo: {
+    recipientName: order.shipping.recipientName,
+    line1: order.shipping.line1,
+    line2: order.shipping.line2 ?? '',
+    city: order.shipping.city,
+    state: order.shipping.state,
+    postalCode: order.shipping.postalCode,
+    country: order.shipping.country,
+  },
+  carrier: shipment?.carrier ?? '',
+  trackingNumber: shipment?.trackingNumber ?? '',
+  packedAt: iso(shipment?.packedAt),
+  shippedAt: iso(shipment?.shippedAt),
+  deliveredAt: iso(shipment?.deliveredAt),
+  fulfillmentStartedAt: iso(shipment?.createdAt),
+  grandTotal: order.grandTotal,
+  currency: order.currency,
+  items: order.items.map((item) => {
+    const product = products.get(String(item.productId));
+
+    return {
+      name: item.productName,
+      slug: product?.slug ?? '',
+      imageUrl: productImageUrl(product),
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+    };
+  }),
 });
 
 export const assertOrderOwner = (order: Order, customerId: string) => {

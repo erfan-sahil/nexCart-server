@@ -5,7 +5,12 @@ import { readIdempotencyKey } from '../../utils/idempotency';
 import { sendCreated, sendPaginated, sendSuccess } from '../../utils/sendResponse';
 import { AppError } from '../../utils/AppError';
 import { orderService } from './order.service';
-import type { CreateOrderInput, ListOrdersQuery, QuoteOrderInput } from './order.validator';
+import type {
+  CreateOrderInput,
+  ListOrdersQuery,
+  QuoteOrderInput,
+  TrackOrderInput,
+} from './order.validator';
 
 const actorId = (req: Request) => {
   if (!req.auth) {
@@ -41,6 +46,12 @@ const list = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+const track = asyncHandler(async (req: Request, res: Response) => {
+  const data = await orderService.track(req.body as TrackOrderInput);
+
+  sendSuccess(res, data, { message: 'Order tracking' });
+});
+
 const getById = asyncHandler(async (req: Request, res: Response) => {
   const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.orderId;
   const data = await orderService.getById({ customerId: actorId(req) }, orderId ?? '');
@@ -52,6 +63,7 @@ export const orderController = {
   quote,
   create,
   list,
+  track,
   getById,
 };
 
