@@ -8,6 +8,7 @@ import { heroRouter } from './hero.routes';
 import { inventoryRouter } from './inventory.routes';
 import { orderRouter } from '../modules/orders/order.routes';
 import { sslcommerzRouter } from '../modules/payments/payment.routes';
+import { wishlistRouter } from '../modules/wishlist/wishlist.routes';
 import {
   adminFulfillmentRouter,
   adminOrderFulfillmentRouter,
@@ -32,6 +33,7 @@ apiRouter.use('/catalog', catalogRouter);
 apiRouter.use('/products', productRouter);
 apiRouter.use('/inventory', inventoryRouter);
 apiRouter.use('/orders', orderRouter);
+apiRouter.use('/wishlist', wishlistRouter);
 apiRouter.use('/payments/sslcommerz', sslcommerzRouter);
 apiRouter.use('/vendor/fulfillments', vendorFulfillmentRouter);
 apiRouter.use('/admin/fulfillments', adminFulfillmentRouter);
