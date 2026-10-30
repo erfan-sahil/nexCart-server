@@ -37,6 +37,7 @@ export const Permission = {
   customerTracking: 'customer:tracking',
   customerReviews: 'customer:reviews',
   customerWishlist: 'customer:wishlist',
+  customerRecentlyViewed: 'customer:recently-viewed',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -82,6 +83,7 @@ const CUSTOMER_PERMISSIONS = [
   Permission.customerTracking,
   Permission.customerReviews,
   Permission.customerWishlist,
+  Permission.customerRecentlyViewed,
 ] as const satisfies readonly Permission[];
 
 const ROLE_PERMISSIONS: Record<UserRole, ReadonlySet<Permission>> = {
