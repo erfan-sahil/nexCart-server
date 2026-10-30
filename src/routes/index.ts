@@ -15,6 +15,7 @@ import {
   adminOrderFulfillmentRouter,
   vendorFulfillmentRouter,
 } from '../modules/fulfillment/fulfillment.routes';
+import { productReviewRouter } from '../modules/reviews/review.routes';
 import { userRouter } from './user.routes';
 import { productRouter } from './product.routes';
 import { storeRouter } from './store.routes';
@@ -32,6 +33,7 @@ apiRouter.use('/attributes', attributeRouter);
 apiRouter.use('/categories', categoryRouter);
 apiRouter.use('/catalog', catalogRouter);
 apiRouter.use('/products', productRouter);
+apiRouter.use('/products', productReviewRouter);
 apiRouter.use('/inventory', inventoryRouter);
 apiRouter.use('/orders', orderRouter);
 apiRouter.use('/wishlist', wishlistRouter);

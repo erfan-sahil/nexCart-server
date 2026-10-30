@@ -74,7 +74,17 @@ type ProductSource = {
   isFeatured: boolean;
   isPublished: boolean;
   publishedAt: Date | null;
-  ratingSummary: { average: number; count: number };
+  ratingSummary: {
+    average: number;
+    count: number;
+    distribution?: {
+      star1?: number;
+      star2?: number;
+      star3?: number;
+      star4?: number;
+      star5?: number;
+    };
+  };
   createdAt: Date;
   updatedAt: Date;
 };
@@ -470,6 +480,13 @@ const readProduct = (product: ProductDocument): ProductSource => {
     ratingSummary: {
       average: plain.ratingSummary?.average ?? 0,
       count: plain.ratingSummary?.count ?? 0,
+      distribution: {
+        star1: plain.ratingSummary?.distribution?.star1 ?? 0,
+        star2: plain.ratingSummary?.distribution?.star2 ?? 0,
+        star3: plain.ratingSummary?.distribution?.star3 ?? 0,
+        star4: plain.ratingSummary?.distribution?.star4 ?? 0,
+        star5: plain.ratingSummary?.distribution?.star5 ?? 0,
+      },
     },
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
@@ -613,6 +630,13 @@ const mapProducts = async (products: ProductSource[]): Promise<ProductDto[]> => 
       ratingSummary: {
         average: product.ratingSummary.average,
         count: product.ratingSummary.count,
+        distribution: {
+          star1: product.ratingSummary.distribution?.star1 ?? 0,
+          star2: product.ratingSummary.distribution?.star2 ?? 0,
+          star3: product.ratingSummary.distribution?.star3 ?? 0,
+          star4: product.ratingSummary.distribution?.star4 ?? 0,
+          star5: product.ratingSummary.distribution?.star5 ?? 0,
+        },
       },
       createdAt: product.createdAt.toISOString(),
       updatedAt: product.updatedAt.toISOString(),
@@ -764,7 +788,11 @@ export const productService = {
       isFeatured: false,
       images: [],
       thumbnailId: '',
-      ratingSummary: { average: 0, count: 0 },
+      ratingSummary: {
+        average: 0,
+        count: 0,
+        distribution: { star1: 0, star2: 0, star3: 0, star4: 0, star5: 0 },
+      },
     });
 
     await attachUploadedImages(product, input.images);
