@@ -1144,6 +1144,31 @@ export const productService = {
     return runList(filter, query);
   },
 
+  async listListedByIds(ids: string[]) {
+    const ordered = [...new Set(ids.filter((id) => Types.ObjectId.isValid(id)))];
+
+    if (ordered.length === 0) {
+      return [];
+    }
+
+    const storeIds = await StoreModel.find(listedStoreFilter).distinct('_id');
+    const products = await ProductModel.find({
+      _id: { $in: ordered },
+      approvalStatus: 'approved',
+      status: 'active',
+      isPublished: true,
+      storeId: { $in: storeIds },
+    });
+    const dtos = await mapProducts(products.map((product) => readProduct(product)));
+    const byId = new Map(dtos.map((dto) => [dto.id, dto]));
+
+    return ordered.flatMap((id) => {
+      const dto = byId.get(id);
+
+      return dto ? [dto] : [];
+    });
+  },
+
   async getById(id: string, viewer?: ProductViewer) {
     const product = await ProductModel.findById(id);
 

@@ -210,7 +210,7 @@ const savingsFor = (
   return Math.min(1, discountValue / price);
 };
 
-const refreshListing = async (productId: Types.ObjectId) => {
+export const syncListing = async (productId: Types.ObjectId) => {
   const variants = await ProductVariantModel.find({ productId, status: 'active' }).select(
     'price discountType discountValue stock dealStartsAt dealEndsAt',
   );
@@ -915,7 +915,7 @@ export const variantService = {
       throw mapDuplicate(error);
     }
 
-    await refreshListing(product._id);
+    await syncListing(product._id);
 
     return present(variant, product);
   },
@@ -1019,7 +1019,7 @@ export const variantService = {
       throw mapDuplicate(error);
     }
 
-    await refreshListing(product._id);
+    await syncListing(product._id);
 
     return present(variant, product);
   },
@@ -1041,7 +1041,7 @@ export const variantService = {
       await promoteDefault(product._id, variant._id);
     }
 
-    await refreshListing(product._id);
+    await syncListing(product._id);
 
     return { id: String(variant._id) };
   },
@@ -1050,7 +1050,7 @@ export const variantService = {
     const products = await ProductModel.find().select('_id');
 
     for (const product of products) {
-      await refreshListing(product._id);
+      await syncListing(product._id);
     }
   },
 };
