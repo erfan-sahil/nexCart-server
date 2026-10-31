@@ -9,6 +9,7 @@ import {
   flashDealIdParamsSchema,
   flashDealItemParamsSchema,
   listFlashDealsQuerySchema,
+  setFlashDealEnabledSchema,
   updateFlashDealCampaignSchema,
   updateFlashDealItemSchema,
 } from './flash-deal.validator';
@@ -51,6 +52,13 @@ flashDealRouter.post(
   ...requirePermissions(Permission.adminPromotions),
   validate({ params: flashDealIdParamsSchema }),
   flashDealController.endNow,
+);
+
+flashDealRouter.patch(
+  '/:id/enabled',
+  ...requirePermissions(Permission.adminPromotions),
+  validate({ params: flashDealIdParamsSchema, body: setFlashDealEnabledSchema }),
+  flashDealController.setEnabled,
 );
 
 flashDealRouter.post(

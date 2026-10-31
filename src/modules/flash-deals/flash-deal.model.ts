@@ -18,6 +18,12 @@ const flashDealCampaignSchema = new Schema(
       type: Date,
       required: true,
     },
+    isEnabled: {
+      type: Boolean,
+      required: true,
+      default: true,
+      index: true,
+    },
   },
   {
     timestamps: true,
@@ -26,6 +32,7 @@ const flashDealCampaignSchema = new Schema(
 );
 
 flashDealCampaignSchema.index({ startsAt: 1, endsAt: 1 });
+flashDealCampaignSchema.index({ isEnabled: 1, startsAt: 1, endsAt: 1 });
 
 export type FlashDealCampaign = InferSchemaType<typeof flashDealCampaignSchema> & {
   _id: Types.ObjectId;

@@ -43,14 +43,20 @@ export const flashDealItemParamsSchema = z.object({
   itemId: objectIdSchema,
 });
 
+export const setFlashDealEnabledSchema = z.object({
+  isEnabled: z.boolean(),
+});
+
 export const listFlashDealsQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  status: z.enum(['active', 'upcoming', 'ended']).default('active'),
+  status: z.enum(['all', 'active', 'ended']).default('all'),
+  search: z.string().trim().max(80).optional(),
 });
 
 export type CreateFlashDealCampaignInput = z.infer<typeof createFlashDealCampaignSchema>;
 export type UpdateFlashDealCampaignInput = z.infer<typeof updateFlashDealCampaignSchema>;
 export type CreateFlashDealItemInput = z.infer<typeof createFlashDealItemSchema>;
 export type UpdateFlashDealItemInput = z.infer<typeof updateFlashDealItemSchema>;
+export type SetFlashDealEnabledInput = z.infer<typeof setFlashDealEnabledSchema>;
 export type ListFlashDealsQuery = z.infer<typeof listFlashDealsQuerySchema>;

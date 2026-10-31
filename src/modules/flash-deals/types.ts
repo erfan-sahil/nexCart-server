@@ -15,11 +15,15 @@ export type FlashDealItemDto = {
   updatedAt: string;
 };
 
+export type FlashDealLifecycle = 'active' | 'upcoming' | 'ended';
+
 export type FlashDealCampaignDto = {
   id: string;
   name: string;
   startsAt: string;
   endsAt: string;
+  isEnabled: boolean;
+  lifecycle: FlashDealLifecycle;
   itemCount: number;
   createdAt: string;
   updatedAt: string;

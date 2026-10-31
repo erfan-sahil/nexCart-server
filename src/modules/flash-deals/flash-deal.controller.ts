@@ -11,6 +11,7 @@ import type {
   CreateFlashDealCampaignInput,
   CreateFlashDealItemInput,
   ListFlashDealsQuery,
+  SetFlashDealEnabledInput,
   UpdateFlashDealCampaignInput,
   UpdateFlashDealItemInput,
 } from './flash-deal.validator';
@@ -62,6 +63,16 @@ const endNow = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, campaign, { message: 'Flash deal ended' });
 });
 
+const setEnabled = asyncHandler(async (req: Request, res: Response) => {
+  const campaign = await flashDealService.setEnabled(
+    routeParam(req.params.id),
+    req.body as SetFlashDealEnabledInput,
+  );
+  sendSuccess(res, campaign, {
+    message: campaign.isEnabled ? 'Flash deal activated' : 'Flash deal deactivated',
+  });
+});
+
 const addItem = asyncHandler(async (req: Request, res: Response) => {
   const item = await flashDealService.addItem(
     routeParam(req.params.id),
@@ -92,6 +103,7 @@ export const flashDealController = {
   create,
   update,
   endNow,
+  setEnabled,
   addItem,
   updateItem,
   removeItem,

@@ -17,6 +17,7 @@ import type {
   FlashDealCampaignDto,
   FlashDealDiscountType,
   FlashDealItemDto,
+  FlashDealLifecycle,
   FlashDealPublicMetaDto,
   FlashDealSettingsDto,
 } from './types';
@@ -29,6 +30,7 @@ import type {
   CreateFlashDealCampaignInput,
   CreateFlashDealItemInput,
   ListFlashDealsQuery,
+  SetFlashDealEnabledInput,
   UpdateFlashDealCampaignInput,
   UpdateFlashDealItemInput,
 } from './flash-deal.validator';
@@ -53,11 +55,35 @@ const ensureMigrated = async () => {
   await migrateLegacyFlashDeals();
 };
 
-const campaignDto = (campaign: FlashDealCampaign, itemCount: number): FlashDealCampaignDto => ({
+const campaignIsEnabled = (campaign: Pick<FlashDealCampaign, 'isEnabled'>) =>
+  campaign.isEnabled !== false;
+
+const campaignLifecycle = (
+  campaign: Pick<FlashDealCampaign, 'startsAt' | 'endsAt'>,
+  now: Date,
+): FlashDealLifecycle => {
+  if (campaign.endsAt <= now) {
+    return 'ended';
+  }
+
+  if (campaign.startsAt > now) {
+    return 'upcoming';
+  }
+
+  return 'active';
+};
+
+const campaignDto = (
+  campaign: FlashDealCampaign,
+  itemCount: number,
+  now = new Date(),
+): FlashDealCampaignDto => ({
   id: String(campaign._id),
   name: campaign.name,
   startsAt: campaign.startsAt.toISOString(),
   endsAt: campaign.endsAt.toISOString(),
+  isEnabled: campaignIsEnabled(campaign),
+  lifecycle: campaignLifecycle(campaign, now),
   itemCount,
   createdAt: campaign.createdAt.toISOString(),
   updatedAt: campaign.updatedAt.toISOString(),
@@ -85,20 +111,52 @@ const statusFilter = (
   now: Date,
 ): FilterQuery<FlashDealCampaign> => {
   if (status === 'active') {
-    return { startsAt: { $lte: now }, endsAt: { $gt: now } };
+    return { endsAt: { $gt: now } };
   }
 
-  if (status === 'upcoming') {
-    return { startsAt: { $gt: now } };
+  if (status === 'ended') {
+    return { endsAt: { $lte: now } };
   }
 
-  return { endsAt: { $lte: now } };
+  return {};
 };
 
 const assertDealWindow = (startsAt: Date, endsAt: Date) => {
   if (startsAt >= endsAt) {
     throw AppError.validation('Deal end must be after the start');
   }
+};
+
+/** Only one enabled, non-ended flash deal may cover any point in time. */
+const assertNoScheduleConflict = async (startsAt: Date, endsAt: Date, excludeId?: string) => {
+  const now = new Date();
+  const filter: FilterQuery<FlashDealCampaign> = {
+    isEnabled: { $ne: false },
+    endsAt: { $gt: now },
+    startsAt: { $lt: endsAt },
+  };
+
+  if (excludeId) {
+    filter._id = { $ne: excludeId };
+  }
+
+  const candidates = await FlashDealCampaignModel.find(filter)
+    .select('name startsAt endsAt')
+    .lean();
+
+  const conflict = candidates.find((campaign) => campaign.endsAt > startsAt);
+
+  if (!conflict) {
+    return;
+  }
+
+  const conflictIsActive = conflict.startsAt <= now && conflict.endsAt > now;
+
+  throw AppError.conflict(
+    conflictIsActive
+      ? `Only one flash deal can be active at a time. "${conflict.name}" is already running.`
+      : `Schedule overlaps with "${conflict.name}". Only one flash deal can run at a time.`,
+  );
 };
 
 const loadCampaign = async (id: string) => {
@@ -318,6 +376,7 @@ const buildFlashOffer = (
 
 const findActiveCampaign = async (now = new Date()) => {
   return FlashDealCampaignModel.findOne({
+    isEnabled: { $ne: false },
     startsAt: { $lte: now },
     endsAt: { $gt: now },
   })
@@ -344,14 +403,36 @@ export const flashDealService = {
   async create(input: CreateFlashDealCampaignInput) {
     await ensureMigrated();
     assertDealWindow(input.startsAt, input.endsAt);
+    await assertNoScheduleConflict(input.startsAt, input.endsAt);
 
     const created = await FlashDealCampaignModel.create({
       name: input.name.trim(),
       startsAt: input.startsAt,
       endsAt: input.endsAt,
+      isEnabled: true,
     });
 
     return campaignDto(created, 0);
+  },
+
+  async setEnabled(id: string, input: SetFlashDealEnabledInput) {
+    await ensureMigrated();
+    const campaign = await loadCampaign(id);
+    const now = new Date();
+
+    if (campaign.endsAt <= now) {
+      throw AppError.validation('Ended deals cannot be activated or deactivated');
+    }
+
+    if (input.isEnabled) {
+      await assertNoScheduleConflict(campaign.startsAt, campaign.endsAt, String(campaign._id));
+    }
+
+    campaign.isEnabled = input.isEnabled;
+    await campaign.save();
+
+    const counts = await itemCountsByCampaign([campaign._id]);
+    return campaignDto(campaign, counts.get(String(campaign._id)) ?? 0);
   },
 
   async update(id: string, input: UpdateFlashDealCampaignInput) {
@@ -366,6 +447,7 @@ export const flashDealService = {
     const startsAt = input.startsAt ?? campaign.startsAt;
     const endsAt = input.endsAt ?? campaign.endsAt;
     assertDealWindow(startsAt, endsAt);
+    await assertNoScheduleConflict(startsAt, endsAt, String(campaign._id));
 
     if (input.name !== undefined) {
       campaign.name = input.name.trim();
@@ -405,20 +487,26 @@ export const flashDealService = {
   async listManage(query: ListFlashDealsQuery) {
     await ensureMigrated();
     const now = new Date();
-    const filter = statusFilter(query.status, now);
+    const filter: FilterQuery<FlashDealCampaign> = {
+      ...statusFilter(query.status, now),
+    };
+
+    const search = query.search?.trim();
+
+    if (search) {
+      filter.name = { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+    }
+
     const skip = (query.page - 1) * query.limit;
+    const sort: Record<string, 1 | -1> =
+      query.status === 'ended'
+        ? { endsAt: -1 }
+        : query.status === 'active'
+          ? { startsAt: 1 }
+          : { startsAt: -1 };
+
     const [campaigns, total] = await Promise.all([
-      FlashDealCampaignModel.find(filter)
-        .sort(
-          query.status === 'ended'
-            ? { endsAt: -1 }
-            : query.status === 'upcoming'
-              ? { startsAt: 1 }
-              : { endsAt: 1 },
-        )
-        .skip(skip)
-        .limit(query.limit)
-        .lean(),
+      FlashDealCampaignModel.find(filter).sort(sort).skip(skip).limit(query.limit).lean(),
       FlashDealCampaignModel.countDocuments(filter),
     ]);
 
@@ -426,7 +514,7 @@ export const flashDealService = {
 
     return {
       items: campaigns.map((campaign) =>
-        campaignDto(campaign as FlashDealCampaign, counts.get(String(campaign._id)) ?? 0),
+        campaignDto(campaign as FlashDealCampaign, counts.get(String(campaign._id)) ?? 0, now),
       ),
       page: query.page,
       limit: query.limit,
@@ -532,6 +620,7 @@ export const flashDealService = {
     }
 
     const activeCampaigns = await FlashDealCampaignModel.find({
+      isEnabled: { $ne: false },
       startsAt: { $lte: now },
       endsAt: { $gt: now },
     })
@@ -589,6 +678,7 @@ export const flashDealService = {
   async listActiveProductIds(now = new Date()) {
     await ensureMigrated();
     const activeCampaigns = await FlashDealCampaignModel.find({
+      isEnabled: { $ne: false },
       startsAt: { $lte: now },
       endsAt: { $gt: now },
     })
