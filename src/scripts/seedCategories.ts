@@ -1,7 +1,7 @@
 import { connectDatabase, disconnectDatabase } from '../config/database';
-import { CategoryModel } from '../models/category.model';
-import { categoryService } from '../services/category.service';
-import { logger } from '../utils/logger';
+import { CategoryModel } from '../modules/categories/category.model';
+import { categoryService } from '../modules/categories/category.service';
+import { logger } from '../common/utils/logger';
 import { categorySeed, type CategorySeed } from './categorySeed';
 
 const USER_ROOT_ID = '6ac46f7a5ccfc05b47336e8b';

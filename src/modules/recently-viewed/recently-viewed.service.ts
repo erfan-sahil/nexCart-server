@@ -1,5 +1,5 @@
-import { RecentlyViewedItemModel } from '../../models/recentlyViewedItem.model';
-import { productService } from '../../services/product.service';
+import { RecentlyViewedItemModel } from './recently-viewed-item.model';
+import { productService } from '../products/product.service';
 import { MAX_RECENTLY_VIEWED_ITEMS } from './constants';
 
 const list = async (userId: string) => {

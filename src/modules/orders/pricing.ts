@@ -2,9 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { Types } from 'mongoose';
 import { env } from '../../config/env';
 import { deliveryFeeFor, siteSettingsService } from '../site-settings/site-settings.service';
-import { ProductModel } from '../../models/product.model';
-import { ProductVariantModel } from '../../models/productVariant.model';
-import { isStoreListed, StoreModel } from '../../models/store.model';
+import { ProductModel } from '../products/product.model';
+import { ProductVariantModel } from '../products/product-variant.model';
+import { isStoreListed, StoreModel } from '../stores/store.model';
 import {
   MAX_ORDER_LINES,
   MAX_ORDER_LINE_QUANTITY,
@@ -12,7 +12,7 @@ import {
   type OrderPaymentMethod,
 } from './constants';
 import type { OrderItemDto, OrderQuoteDto, OrderTotalsDto } from './types';
-import { AppError } from '../../utils/AppError';
+import { AppError } from '../../common/errors/AppError';
 
 export type CheckoutLineInput = {
   variantId: string;

@@ -1,11 +1,11 @@
 import { Types } from 'mongoose';
-import { OrderModel } from '../../models/order.model';
-import { ProductModel } from '../../models/product.model';
-import { ShipmentModel } from '../../models/shipment.model';
-import { UserModel } from '../../models/user.model';
-import { AppError } from '../../utils/AppError';
-import { isDuplicateKeyError } from '../../utils/mongoError';
-import { runIdempotent } from '../../utils/idempotency';
+import { OrderModel } from './order.model';
+import { ProductModel } from '../products/product.model';
+import { ShipmentModel } from '../fulfillment/shipment.model';
+import { UserModel } from '../users/user.model';
+import { AppError } from '../../common/errors/AppError';
+import { isDuplicateKeyError } from '../../common/errors/mongoError';
+import { runIdempotent } from '../../common/utils/idempotency';
 import { IdempotencyScope } from './constants';
 import { assertOrderOwner, customerObjectId, toOrderDto, toOrderTrackingDto } from './order.mapper';
 import { buildOrderNumber, buildTotals, quoteCheckout, resolveCheckoutLines } from './pricing';

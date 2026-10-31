@@ -1,8 +1,8 @@
 import { Router } from 'express';
 
-import { requireAnyPermissions, requirePermissions } from '../../middleware/authorize';
-import { authenticate } from '../../middleware/authenticate';
-import { validate } from '../../middleware/validate';
+import { requireAnyPermissions, requirePermissions } from '../../common/middleware/authorize';
+import { authenticate } from '../../common/middleware/authenticate';
+import { validate } from '../../common/middleware/validate';
 import { productReportController, productReportPermissions } from './product-report.controller';
 import {
   createProductReportSchema,

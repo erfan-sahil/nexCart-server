@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { Permission } from '../../constants/permissions';
-import { requirePermissions } from '../../middleware/authorize';
-import { validate } from '../../middleware/validate';
+import { Permission } from '../../common/constants/permissions';
+import { requirePermissions } from '../../common/middleware/authorize';
+import { validate } from '../../common/middleware/validate';
 import { siteSettingsController } from './site-settings.controller';
 import { updateSiteSettingsSchema } from './site-settings.validator';
 

@@ -1,10 +1,10 @@
 import type { Request, Response } from 'express';
-import { Permission } from '../../constants/permissions';
+import { Permission } from '../../common/constants/permissions';
 import { env, isProduction } from '../../config/env';
-import { asyncHandler } from '../../utils/asyncHandler';
-import { readIdempotencyKey } from '../../utils/idempotency';
-import { sendCreated } from '../../utils/sendResponse';
-import { AppError } from '../../utils/AppError';
+import { asyncHandler } from '../../common/http/asyncHandler';
+import { readIdempotencyKey } from '../../common/utils/idempotency';
+import { sendCreated } from '../../common/http/sendResponse';
+import { AppError } from '../../common/errors/AppError';
 import { paymentService } from './payment.service';
 import {
   markAttemptCancelled,

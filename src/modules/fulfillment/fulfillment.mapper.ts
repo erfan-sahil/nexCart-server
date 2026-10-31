@@ -1,6 +1,6 @@
-import type { Order } from '../../models/order.model';
-import type { Shipment } from '../../models/shipment.model';
-import type { VendorFulfillment } from '../../models/vendorFulfillment.model';
+import type { Order } from '../orders/order.model';
+import type { Shipment } from './shipment.model';
+import type { VendorFulfillment } from './vendor-fulfillment.model';
 import type { FulfillmentItemDto, ShipmentDto, VendorFulfillmentDto } from './types';
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;

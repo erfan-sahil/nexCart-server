@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
-import type { Order } from '../../models/order.model';
-import type { Product } from '../../models/product.model';
-import type { Shipment } from '../../models/shipment.model';
-import { AppError } from '../../utils/AppError';
+import type { Order } from './order.model';
+import type { Product } from '../products/product.model';
+import type { Shipment } from '../fulfillment/shipment.model';
+import { AppError } from '../../common/errors/AppError';
 import type { OrderDto, OrderShippingDto, OrderTrackingDto } from './types';
 
 const toShippingDto = (shipping: Order['shipping']): OrderShippingDto => ({

@@ -5,19 +5,19 @@ import helmet from 'helmet';
 import { corsOptions } from './config/cors';
 import { env, isProduction } from './config/env';
 import { uploadRoot } from './config/uploads';
-import { errorHandler } from './middleware/errorHandler';
+import { errorHandler } from './common/middleware/errorHandler';
 import {
   rejectMalformedUrl,
   rejectUnsupportedContentType,
   stripTrailingSlash,
-} from './middleware/normalizeRequest';
-import { notFound } from './middleware/notFound';
-import { apiLimiter } from './middleware/rateLimiter';
-import { requestId } from './middleware/requestId';
-import { requestLogger } from './middleware/requestLogger';
-import { requestTimeout } from './middleware/requestTimeout';
+} from './common/middleware/normalizeRequest';
+import { notFound } from './common/middleware/notFound';
+import { apiLimiter } from './common/middleware/rateLimiter';
+import { requestId } from './common/middleware/requestId';
+import { requestLogger } from './common/middleware/requestLogger';
+import { requestTimeout } from './common/middleware/requestTimeout';
 import { apiRouter } from './routes';
-import { sendSuccess } from './utils/sendResponse';
+import { sendSuccess } from './common/http/sendResponse';
 
 export const createApp = () => {
   const app = express();

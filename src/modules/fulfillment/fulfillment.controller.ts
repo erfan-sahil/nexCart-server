@@ -1,8 +1,8 @@
 import type { Request, Response } from 'express';
-import { Permission } from '../../constants/permissions';
-import { asyncHandler } from '../../utils/asyncHandler';
-import { sendPaginated, sendSuccess } from '../../utils/sendResponse';
-import { AppError } from '../../utils/AppError';
+import { Permission } from '../../common/constants/permissions';
+import { asyncHandler } from '../../common/http/asyncHandler';
+import { sendPaginated, sendSuccess } from '../../common/http/sendResponse';
+import { AppError } from '../../common/errors/AppError';
 import { fulfillmentService } from './fulfillment.service';
 import type {
   DispatchFulfillmentInput,

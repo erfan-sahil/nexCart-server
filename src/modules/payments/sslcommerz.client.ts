@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { env, isProduction } from '../../config/env';
-import { AppError } from '../../utils/AppError';
+import { AppError } from '../../common/errors/AppError';
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 

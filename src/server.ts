@@ -2,8 +2,8 @@ import { createApp } from './app';
 import { appState } from './config/appState';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { env } from './config/env';
-import { ensureUploadDir } from './services/imageStorage';
-import { logger } from './utils/logger';
+import { ensureUploadDir } from './infrastructure/storage/imageStorage';
+import { logger } from './common/utils/logger';
 
 const app = createApp();
 const host = '0.0.0.0';

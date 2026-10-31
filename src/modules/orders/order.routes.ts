@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { requirePermissions } from '../../middleware/authorize';
-import { trackLimiter } from '../../middleware/rateLimiter';
-import { validate } from '../../middleware/validate';
+import { requirePermissions } from '../../common/middleware/authorize';
+import { trackLimiter } from '../../common/middleware/rateLimiter';
+import { validate } from '../../common/middleware/validate';
 import { paymentController, paymentPermissions } from '../payments/payment.controller';
 import { initiatePaymentBodySchema } from '../payments/payment.validator';
 import { orderController, orderPermissions } from './order.controller';

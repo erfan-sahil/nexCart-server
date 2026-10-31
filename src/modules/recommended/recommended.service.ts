@@ -1,16 +1,16 @@
 import { Types, type FilterQuery, type HydratedDocument, type SortOrder } from 'mongoose';
-import { CategoryModel } from '../../models/category.model';
-import { OrderModel } from '../../models/order.model';
-import { ProductModel, type Product } from '../../models/product.model';
-import { RecentlyViewedItemModel } from '../../models/recentlyViewedItem.model';
-import { ReviewModel } from '../../models/review.model';
-import { StoreModel, listedStoreFilter } from '../../models/store.model';
-import { WishlistItemModel } from '../../models/wishlistItem.model';
-import { catalogService } from '../../services/catalog.service';
-import { productService } from '../../services/product.service';
-import { AppError } from '../../utils/AppError';
-import { escapeRegex } from '../../utils/slugify';
-import type { ListCatalogQuery } from '../../validators/catalog.validator';
+import { CategoryModel } from '../categories/category.model';
+import { OrderModel } from '../orders/order.model';
+import { ProductModel, type Product } from '../products/product.model';
+import { RecentlyViewedItemModel } from '../recently-viewed/recently-viewed-item.model';
+import { ReviewModel } from '../reviews/review.model';
+import { StoreModel, listedStoreFilter } from '../stores/store.model';
+import { WishlistItemModel } from '../wishlist/wishlist-item.model';
+import { catalogService } from '../catalog/catalog.service';
+import { productService } from '../products/product.service';
+import { AppError } from '../../common/errors/AppError';
+import { escapeRegex } from '../../common/utils/slugify';
+import type { ListCatalogQuery } from '../catalog/catalog.validator';
 import {
   RECOMMENDED_CANDIDATE_POOL,
   RECOMMENDED_ORDER_STATUSES,

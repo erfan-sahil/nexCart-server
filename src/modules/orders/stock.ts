@@ -1,9 +1,9 @@
 import { Types } from 'mongoose';
 import { env } from '../../config/env';
-import { OrderModel } from '../../models/order.model';
-import { ProductVariantModel } from '../../models/productVariant.model';
-import { syncListing } from '../../services/variant.service';
-import { AppError } from '../../utils/AppError';
+import { OrderModel } from './order.model';
+import { ProductVariantModel } from '../products/product-variant.model';
+import { syncListing } from '../products/variant.service';
+import { AppError } from '../../common/errors/AppError';
 import type { ResolvedLine } from './pricing';
 
 type Reservation = {

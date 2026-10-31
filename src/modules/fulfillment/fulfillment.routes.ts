@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { requirePermissions } from '../../middleware/authorize';
-import { validate } from '../../middleware/validate';
+import { requirePermissions } from '../../common/middleware/authorize';
+import { validate } from '../../common/middleware/validate';
 import { fulfillmentController, fulfillmentPermissions } from './fulfillment.controller';
 import {
   codCollectionSchema,

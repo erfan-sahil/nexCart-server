@@ -1,7 +1,7 @@
-import { WishlistItemModel } from '../../models/wishlistItem.model';
-import { productService } from '../../services/product.service';
-import { AppError } from '../../utils/AppError';
-import { isDuplicateKeyError } from '../../utils/mongoError';
+import { WishlistItemModel } from './wishlist-item.model';
+import { productService } from '../products/product.service';
+import { AppError } from '../../common/errors/AppError';
+import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import { MAX_WISHLIST_ITEMS } from './constants';
 
 const list = async (userId: string) => {
