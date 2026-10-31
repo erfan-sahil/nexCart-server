@@ -8,6 +8,7 @@ export const Permission = {
   adminCatalog: 'admin:catalog',
   adminVendorApprovals: 'admin:vendor-approvals',
   adminProductModeration: 'admin:product-moderation',
+  adminProductReports: 'admin:product-reports',
   adminOrders: 'admin:orders',
   adminCoupons: 'admin:coupons',
   adminPromotions: 'admin:promotions',
@@ -24,6 +25,7 @@ export const Permission = {
   vendorShipping: 'vendor:shipping',
   vendorCoupons: 'vendor:coupons',
   vendorAnalytics: 'vendor:analytics',
+  vendorProductReports: 'vendor:product-reports',
 
   customerBrowseCategories: 'customer:browse-categories',
   customerSearch: 'customer:search',
@@ -37,6 +39,7 @@ export const Permission = {
   customerTracking: 'customer:tracking',
   customerReviews: 'customer:reviews',
   customerWishlist: 'customer:wishlist',
+  customerRecentlyViewed: 'customer:recently-viewed',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -49,6 +52,7 @@ const ADMIN_PERMISSIONS = [
   Permission.adminCatalog,
   Permission.adminVendorApprovals,
   Permission.adminProductModeration,
+  Permission.adminProductReports,
   Permission.adminOrders,
   Permission.adminCoupons,
   Permission.adminPromotions,
@@ -67,6 +71,7 @@ const VENDOR_PERMISSIONS = [
   Permission.vendorShipping,
   Permission.vendorCoupons,
   Permission.vendorAnalytics,
+  Permission.vendorProductReports,
 ] as const satisfies readonly Permission[];
 
 const CUSTOMER_PERMISSIONS = [
@@ -82,6 +87,7 @@ const CUSTOMER_PERMISSIONS = [
   Permission.customerTracking,
   Permission.customerReviews,
   Permission.customerWishlist,
+  Permission.customerRecentlyViewed,
 ] as const satisfies readonly Permission[];
 
 const ROLE_PERMISSIONS: Record<UserRole, ReadonlySet<Permission>> = {

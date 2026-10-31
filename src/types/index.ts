@@ -14,6 +14,7 @@ export type PaginationMeta = {
 
 export type ApiMeta = {
   pagination?: PaginationMeta;
+  personalized?: boolean;
 };
 
 export type ApiSuccess<T> = {

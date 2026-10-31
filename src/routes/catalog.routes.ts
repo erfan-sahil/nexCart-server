@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { catalogController } from '../controllers/catalog.controller';
+import { authenticateOptional } from '../middleware/authenticate';
 import { validate } from '../middleware/validate';
 import {
   catalogCollectionParamsSchema,
@@ -11,6 +12,13 @@ import {
 export const catalogRouter = Router();
 
 catalogRouter.get('/home', catalogController.home);
+
+catalogRouter.get(
+  '/recommendations',
+  authenticateOptional,
+  validate({ query: listCatalogQuerySchema }),
+  catalogController.recommendations,
+);
 
 catalogRouter.get(
   '/collections/:collection',

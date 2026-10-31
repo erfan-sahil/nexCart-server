@@ -8,12 +8,19 @@ import { heroRouter } from './hero.routes';
 import { inventoryRouter } from './inventory.routes';
 import { orderRouter } from '../modules/orders/order.routes';
 import { sslcommerzRouter } from '../modules/payments/payment.routes';
+import { recentlyViewedRouter } from '../modules/recently-viewed/recently-viewed.routes';
 import { wishlistRouter } from '../modules/wishlist/wishlist.routes';
 import {
   adminFulfillmentRouter,
   adminOrderFulfillmentRouter,
   vendorFulfillmentRouter,
 } from '../modules/fulfillment/fulfillment.routes';
+import { productReviewRouter } from '../modules/reviews/review.routes';
+import { siteSettingsRouter } from '../modules/site-settings/site-settings.routes';
+import {
+  productReportInboxRouter,
+  productReportOnProductRouter,
+} from '../modules/product-reports/product-report.routes';
 import { userRouter } from './user.routes';
 import { productRouter } from './product.routes';
 import { storeRouter } from './store.routes';
@@ -31,9 +38,14 @@ apiRouter.use('/attributes', attributeRouter);
 apiRouter.use('/categories', categoryRouter);
 apiRouter.use('/catalog', catalogRouter);
 apiRouter.use('/products', productRouter);
+apiRouter.use('/products', productReviewRouter);
+apiRouter.use('/products', productReportOnProductRouter);
+apiRouter.use('/product-reports', productReportInboxRouter);
 apiRouter.use('/inventory', inventoryRouter);
 apiRouter.use('/orders', orderRouter);
+apiRouter.use('/site-settings', siteSettingsRouter);
 apiRouter.use('/wishlist', wishlistRouter);
+apiRouter.use('/recently-viewed', recentlyViewedRouter);
 apiRouter.use('/payments/sslcommerz', sslcommerzRouter);
 apiRouter.use('/vendor/fulfillments', vendorFulfillmentRouter);
 apiRouter.use('/admin/fulfillments', adminFulfillmentRouter);

@@ -75,6 +75,17 @@ const productAttributeSchema = new Schema(
   { _id: false, id: false },
 );
 
+const ratingDistributionSchema = new Schema(
+  {
+    star1: { type: Number, required: true, default: 0, min: 0 },
+    star2: { type: Number, required: true, default: 0, min: 0 },
+    star3: { type: Number, required: true, default: 0, min: 0 },
+    star4: { type: Number, required: true, default: 0, min: 0 },
+    star5: { type: Number, required: true, default: 0, min: 0 },
+  },
+  { _id: false, id: false },
+);
+
 const ratingSummarySchema = new Schema(
   {
     average: {
@@ -89,6 +100,17 @@ const ratingSummarySchema = new Schema(
       required: true,
       default: 0,
       min: 0,
+    },
+    distribution: {
+      type: ratingDistributionSchema,
+      required: true,
+      default: () => ({
+        star1: 0,
+        star2: 0,
+        star3: 0,
+        star4: 0,
+        star5: 0,
+      }),
     },
   },
   { _id: false, id: false },

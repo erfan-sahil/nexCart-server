@@ -7,6 +7,7 @@ import { IdempotencyScope } from '../orders/constants';
 import { assertOrderOwner, customerObjectId, toOrderDto } from '../orders/order.mapper';
 import { releaseExpiredOrderHolds } from '../orders/stock';
 import type { PaymentPurpose } from './constants';
+import { confirmOrderWithNothingDue } from './settle.service';
 import {
   buildMockGatewayUrl,
   createSslcommerzSession,
@@ -69,6 +70,23 @@ export const paymentService = {
 
         if (!order.stockHoldExpiresAt || order.stockHoldExpiresAt <= now) {
           throw AppError.validation('The payment window for this order has expired');
+        }
+
+        if (order.amountDueNow <= 0) {
+          await confirmOrderWithNothingDue(order);
+
+          const body: PaymentInitiateDto = {
+            attemptId: '',
+            tranId: '',
+            orderId: String(order._id),
+            amount: 0,
+            currency: order.currency,
+            purpose: purposeForMethod(order.paymentMethod),
+            gatewayPageUrl: '',
+            mode: sslcommerzMode(),
+          };
+
+          return { statusCode: 200, body };
         }
 
         await PaymentAttemptModel.updateMany(
