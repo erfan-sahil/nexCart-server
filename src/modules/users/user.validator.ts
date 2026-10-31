@@ -63,7 +63,16 @@ export const updateUserSchema = z
     message: 'At least one field is required',
   });
 
+export const updateMeSchema = z
+  .object({
+    firstName: nameSchema,
+    lastName: nameSchema,
+    phone: phoneSchema.or(z.literal('')).optional(),
+  })
+  .strict();
+
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type UserIdQuery = z.infer<typeof userIdQuerySchema>;
 export type AccountStatusInput = z.infer<typeof accountStatusSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+export type UpdateMeInput = z.infer<typeof updateMeSchema>;

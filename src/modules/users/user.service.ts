@@ -6,7 +6,12 @@ import { VendorApplicationModel } from '../vendor-applications/vendor-applicatio
 import { AppError } from '../../common/errors/AppError';
 import { duplicateKeyFields, isDuplicateKeyError } from '../../common/errors/mongoError';
 import { escapeRegex } from '../../common/utils/slugify';
-import type { AccountStatusInput, ListUsersQuery, UpdateUserInput } from './user.validator';
+import type {
+  AccountStatusInput,
+  ListUsersQuery,
+  UpdateMeInput,
+  UpdateUserInput,
+} from './user.validator';
 import { toUserDto } from '../auth/auth.service';
 import { storeService } from '../stores/store.service';
 
@@ -191,6 +196,37 @@ export const userService = {
   async getById(userId: string) {
     const user = await findUser(userId);
     return toUserDto(user);
+  },
+
+  async updateMe(userId: string, input: UpdateMeInput) {
+    await findUser(userId);
+
+    try {
+      const updated = await UserModel.findByIdAndUpdate(
+        userId,
+        buildUpdate({
+          firstName: input.firstName,
+          lastName: input.lastName,
+          phone: input.phone,
+        }),
+        {
+          new: true,
+          runValidators: true,
+        },
+      );
+
+      if (!updated) {
+        throw AppError.notFound('User not found');
+      }
+
+      return toUserDto(updated);
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+
+      throw mapAccountDuplicate(error);
+    }
   },
 
   async update(actorId: string, userId: string, input: UpdateUserInput) {

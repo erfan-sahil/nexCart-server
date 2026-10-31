@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { Permission } from '../../common/constants/permissions';
 import { userController } from './user.controller';
+import { authenticate } from '../../common/middleware/authenticate';
 import { requirePermissions } from '../../common/middleware/authorize';
 import { validate } from '../../common/middleware/validate';
 import {
   accountStatusSchema,
   listUsersQuerySchema,
+  updateMeSchema,
   updateUserSchema,
   userIdQuerySchema,
 } from './user.validator';
@@ -13,6 +15,8 @@ import {
 export const userRouter = Router();
 
 const adminUsers = requirePermissions(Permission.adminUsers);
+
+userRouter.patch('/me', authenticate, validate({ body: updateMeSchema }), userController.updateMe);
 
 userRouter.get(
   '/',

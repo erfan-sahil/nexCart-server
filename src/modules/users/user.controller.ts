@@ -6,6 +6,7 @@ import { sendPaginated, sendSuccess } from '../../common/http/sendResponse';
 import type {
   AccountStatusInput,
   ListUsersQuery,
+  UpdateMeInput,
   UpdateUserInput,
   UserIdQuery,
 } from './user.validator';
@@ -17,6 +18,16 @@ const actorId = (req: Request) => {
 
   return req.auth.user.id;
 };
+
+const updateMe = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.auth) {
+    throw AppError.unauthorized();
+  }
+
+  const user = await userService.updateMe(req.auth.user.id, req.body as UpdateMeInput);
+
+  sendSuccess(res, user, { message: 'Profile updated' });
+});
 
 const listUsers = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query as unknown as ListUsersQuery;
@@ -82,6 +93,7 @@ const deleteUser = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const userController = {
+  updateMe,
   listUsers,
   updateUser,
   setAccountStatus,
