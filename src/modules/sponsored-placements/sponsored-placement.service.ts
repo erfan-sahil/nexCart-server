@@ -1,4 +1,9 @@
-import { DEFAULT_SPONSORED_CTA, DEFAULT_SPONSORED_EYEBROW, SPONSORED_SLOTS } from './constants';
+import {
+  DEFAULT_SPONSORED_CTA,
+  DEFAULT_SPONSORED_EYEBROW,
+  SPONSORED_SECTIONS,
+  SPONSORED_SLOTS,
+} from './constants';
 import { SponsoredPlacementModel } from './sponsored-placement.model';
 import type {
   SponsoredPlacementManageDto,
@@ -34,7 +39,6 @@ const emptyManage = (slot: SponsoredSlot): SponsoredPlacementManageDto => ({
   title: '',
   subtitle: '',
   ctaLabel: '',
-  image: '',
   isActive: false,
 });
 
@@ -55,15 +59,18 @@ export const sponsoredPlacementService = {
         return emptyManage(slot);
       }
 
+      const section = SPONSORED_SECTIONS.includes(row.section as SponsoredSection)
+        ? (row.section as SponsoredSection)
+        : null;
+
       return {
         slot,
         productId: row.productId ? String(row.productId) : null,
         productName: row.productId ? (names.get(String(row.productId)) ?? '') : '',
-        section: (row.section as SponsoredSection | null) ?? null,
+        section,
         title: row.title ?? '',
         subtitle: row.subtitle ?? '',
         ctaLabel: row.ctaLabel ?? '',
-        image: row.image ?? '',
         isActive: row.isActive,
       };
     });
@@ -90,27 +97,28 @@ export const sponsoredPlacementService = {
       throw AppError.validation('Choose a product from an active store');
     }
 
-    const siblings = await SponsoredPlacementModel.find({
+    const sibling = await SponsoredPlacementModel.findOne({
       slot: { $ne: slot },
-      isActive: true,
+      section: input.section,
+      productId: { $ne: null },
     }).lean();
 
-    for (const sibling of siblings) {
-      if (sibling.section === input.section && input.isActive) {
-        throw AppError.conflict('Another sponsored card already uses this section');
-      }
+    if (sibling) {
+      throw AppError.conflict('This section already has a sponsored product');
     }
 
     const row = await SponsoredPlacementModel.findOneAndUpdate(
       { slot },
       {
-        productId: product._id,
-        section: input.section,
-        title: input.title ?? '',
-        subtitle: input.subtitle ?? '',
-        ctaLabel: input.ctaLabel ?? '',
-        image: input.image ?? '',
-        isActive: input.isActive,
+        $set: {
+          productId: product._id,
+          section: input.section,
+          title: input.title ?? '',
+          subtitle: input.subtitle ?? '',
+          ctaLabel: input.ctaLabel ?? '',
+          isActive: input.isActive,
+        },
+        $unset: { image: 1 },
       },
       { upsert: true, new: true },
     );
@@ -127,7 +135,6 @@ export const sponsoredPlacementService = {
       title: row.title,
       subtitle: row.subtitle,
       ctaLabel: row.ctaLabel,
-      image: row.image,
       isActive: row.isActive,
     } satisfies SponsoredPlacementManageDto;
   },
@@ -163,7 +170,7 @@ export const sponsoredPlacementService = {
       const price = dto.offer.minPrice ?? 0;
       const original = dto.offer.minOriginalPrice ?? undefined;
 
-      const thumbnail = dto.thumbnail?.url ?? dto.images[0]?.url ?? '';
+      const image = dto.thumbnail?.url ?? dto.images[0]?.url ?? '';
 
       promos.push({
         slot: row.slot,
@@ -173,7 +180,7 @@ export const sponsoredPlacementService = {
         subtitle: row.subtitle.trim() || product.shortDescription,
         ctaLabel: row.ctaLabel.trim() || DEFAULT_SPONSORED_CTA,
         href: `/products/${product.slug}`,
-        image: row.image.trim() || thumbnail,
+        image,
         productName: product.name,
         price,
         originalPrice: original && original > price ? original : undefined,

@@ -331,11 +331,7 @@ export const catalogService = {
           limit: HOME_SECTION_LIMITS.popularStores,
           sort: 'popular',
         }),
-        listCollectionExcluding(
-          'trending',
-          { page: 1, limit: HOME_SECTION_LIMITS.trending },
-          exclusions.get('trending'),
-        ),
+        listCollectionExcluding('trending', { page: 1, limit: HOME_SECTION_LIMITS.trending }),
         listCollectionExcluding(
           'new-arrivals',
           { page: 1, limit: HOME_SECTION_LIMITS.newArrivals },
