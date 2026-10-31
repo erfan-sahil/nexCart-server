@@ -1,14 +1,22 @@
 import { Types, type FilterQuery } from 'mongoose';
-import { DEFAULT_FLASH_DEAL_SECTION_TITLE, FLASH_DEAL_SETTINGS_KEY } from './constants';
-import { FlashDealModel, FlashDealSettingsModel, type FlashDeal } from './flash-deal.model';
+import { DEFAULT_FLASH_DEAL_SECTION_TITLE } from './constants';
+import {
+  FlashDealCampaignModel,
+  FlashDealItemModel,
+  type FlashDealCampaign,
+  type FlashDealItem,
+} from './flash-deal.model';
+import { migrateLegacyFlashDeals } from './flash-deal.migrate';
 import {
   flashPriceFromListPrice,
   flashSavingsOnListPrice,
   isFlashPriceValid,
 } from './flash-deal-pricing';
 import type {
+  FlashDealCampaignDetailDto,
+  FlashDealCampaignDto,
   FlashDealDiscountType,
-  FlashDealDto,
+  FlashDealItemDto,
   FlashDealPublicMetaDto,
   FlashDealSettingsDto,
 } from './types';
@@ -18,14 +26,16 @@ import { ProductVariantModel } from '../products/product-variant.model';
 import { StoreModel, isStoreListed } from '../stores/store.model';
 import type { ProductOfferDto } from '../products/types';
 import type {
-  CreateFlashDealInput,
+  CreateFlashDealCampaignInput,
+  CreateFlashDealItemInput,
   ListFlashDealsQuery,
-  UpdateFlashDealInput,
-  UpdateFlashDealSettingsInput,
+  UpdateFlashDealCampaignInput,
+  UpdateFlashDealItemInput,
 } from './flash-deal.validator';
 
 type ActiveFlashDeal = {
   id: string;
+  campaignId: string;
   productId: string;
   discountType: FlashDealDiscountType;
   discountValue: number;
@@ -39,42 +49,41 @@ const isListedProduct = (product: {
   approvalStatus: string;
 }) => product.approvalStatus === 'approved' && product.status === 'active' && product.isPublished;
 
-const settingsDto = (sectionTitle: string): FlashDealSettingsDto => ({
-  sectionTitle,
+const ensureMigrated = async () => {
+  await migrateLegacyFlashDeals();
+};
+
+const campaignDto = (campaign: FlashDealCampaign, itemCount: number): FlashDealCampaignDto => ({
+  id: String(campaign._id),
+  name: campaign.name,
+  startsAt: campaign.startsAt.toISOString(),
+  endsAt: campaign.endsAt.toISOString(),
+  itemCount,
+  createdAt: campaign.createdAt.toISOString(),
+  updatedAt: campaign.updatedAt.toISOString(),
 });
 
-const toDto = (
-  deal: FlashDeal,
+const itemDto = (
+  item: FlashDealItem,
   product: { name: string; slug: string },
   storeName: string,
-): FlashDealDto => ({
-  id: String(deal._id),
-  productId: String(deal.productId),
+): FlashDealItemDto => ({
+  id: String(item._id),
+  campaignId: String(item.campaignId),
+  productId: String(item.productId),
   productName: product.name,
   productSlug: product.slug,
   storeName,
-  discountType: deal.discountType,
-  discountValue: deal.discountValue,
-  startsAt: deal.startsAt.toISOString(),
-  endsAt: deal.endsAt.toISOString(),
-  createdAt: deal.createdAt.toISOString(),
-  updatedAt: deal.updatedAt.toISOString(),
+  discountType: item.discountType,
+  discountValue: item.discountValue,
+  createdAt: item.createdAt.toISOString(),
+  updatedAt: item.updatedAt.toISOString(),
 });
 
-const ensureSettings = async () => {
-  const existing = await FlashDealSettingsModel.findOne({ key: FLASH_DEAL_SETTINGS_KEY });
-
-  if (existing) {
-    return existing;
-  }
-
-  return FlashDealSettingsModel.create({
-    key: FLASH_DEAL_SETTINGS_KEY,
-    sectionTitle: DEFAULT_FLASH_DEAL_SECTION_TITLE,
-  });
-};
-
-const statusFilter = (status: ListFlashDealsQuery['status'], now: Date): FilterQuery<FlashDeal> => {
+const statusFilter = (
+  status: ListFlashDealsQuery['status'],
+  now: Date,
+): FilterQuery<FlashDealCampaign> => {
   if (status === 'active') {
     return { startsAt: { $lte: now }, endsAt: { $gt: now } };
   }
@@ -90,6 +99,20 @@ const assertDealWindow = (startsAt: Date, endsAt: Date) => {
   if (startsAt >= endsAt) {
     throw AppError.validation('Deal end must be after the start');
   }
+};
+
+const loadCampaign = async (id: string) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw AppError.notFound('Flash deal not found');
+  }
+
+  const campaign = await FlashDealCampaignModel.findById(id);
+
+  if (!campaign) {
+    throw AppError.notFound('Flash deal not found');
+  }
+
+  return campaign;
 };
 
 const loadListedProduct = async (productId: string) => {
@@ -142,22 +165,70 @@ const assertDiscountOnVariants = async (
   }
 };
 
-const assertNoOpenDeal = async (productId: string, excludeId?: string) => {
+const assertNoOpenItemForProduct = async (productId: string, excludeItemId?: string) => {
   const now = new Date();
-  const filter: FilterQuery<FlashDeal> = {
-    productId,
-    endsAt: { $gt: now },
-  };
+  const openCampaigns = await FlashDealCampaignModel.find({ endsAt: { $gt: now } })
+    .select('_id')
+    .lean();
 
-  if (excludeId) {
-    filter._id = { $ne: excludeId };
+  if (openCampaigns.length === 0) {
+    return;
   }
 
-  const open = await FlashDealModel.exists(filter);
+  const filter: FilterQuery<FlashDealItem> = {
+    productId,
+    campaignId: { $in: openCampaigns.map((campaign) => campaign._id) },
+  };
+
+  if (excludeItemId) {
+    filter._id = { $ne: excludeItemId };
+  }
+
+  const open = await FlashDealItemModel.exists(filter);
 
   if (open) {
     throw AppError.conflict('This product already has an open flash deal');
   }
+};
+
+const enrichItems = async (items: FlashDealItem[]): Promise<FlashDealItemDto[]> => {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const productIds = items.map((item) => item.productId);
+  const products = await ProductModel.find({ _id: { $in: productIds } })
+    .select('name slug storeId')
+    .lean();
+  const productsById = new Map(products.map((product) => [String(product._id), product]));
+  const storeIds = [...new Set(products.map((product) => String(product.storeId)))];
+  const stores = await StoreModel.find({ _id: { $in: storeIds } })
+    .select('name')
+    .lean();
+  const storesById = new Map(stores.map((store) => [String(store._id), store.name]));
+
+  return items.map((item) => {
+    const product = productsById.get(String(item.productId));
+
+    return itemDto(
+      item,
+      product ?? { name: '', slug: '' },
+      storesById.get(String(product?.storeId)) ?? '',
+    );
+  });
+};
+
+const itemCountsByCampaign = async (campaignIds: Types.ObjectId[]) => {
+  if (campaignIds.length === 0) {
+    return new Map<string, number>();
+  }
+
+  const rows = await FlashDealItemModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+    { $match: { campaignId: { $in: campaignIds } } },
+    { $group: { _id: '$campaignId', count: { $sum: 1 } } },
+  ]);
+
+  return new Map(rows.map((row) => [String(row._id), row.count]));
 };
 
 const variantRowsForProducts = async (productIds: string[]) => {
@@ -245,106 +316,99 @@ const buildFlashOffer = (
   };
 };
 
+const findActiveCampaign = async (now = new Date()) => {
+  return FlashDealCampaignModel.findOne({
+    startsAt: { $lte: now },
+    endsAt: { $gt: now },
+  })
+    .sort({ endsAt: 1 })
+    .lean();
+};
+
 export const flashDealService = {
   async getSettings(): Promise<FlashDealSettingsDto> {
-    const settings = await ensureSettings();
-    return settingsDto(settings.sectionTitle);
-  },
-
-  async updateSettings(input: UpdateFlashDealSettingsInput) {
-    const settings = await ensureSettings();
-    settings.sectionTitle = input.sectionTitle;
-    await settings.save();
-    return settingsDto(settings.sectionTitle);
+    const meta = await this.getPublicMeta();
+    return { sectionTitle: meta.sectionTitle };
   },
 
   async getPublicMeta(now = new Date()): Promise<FlashDealPublicMetaDto> {
-    const [settings, soonest] = await Promise.all([
-      this.getSettings(),
-      FlashDealModel.findOne({ startsAt: { $lte: now }, endsAt: { $gt: now } })
-        .sort({ endsAt: 1 })
-        .select('endsAt')
-        .lean(),
-    ]);
+    await ensureMigrated();
+    const soonest = await findActiveCampaign(now);
 
     return {
-      sectionTitle: settings.sectionTitle,
+      sectionTitle: soonest?.name ?? DEFAULT_FLASH_DEAL_SECTION_TITLE,
       endsAt: soonest?.endsAt ? soonest.endsAt.toISOString() : null,
     };
   },
 
-  async create(input: CreateFlashDealInput) {
+  async create(input: CreateFlashDealCampaignInput) {
+    await ensureMigrated();
     assertDealWindow(input.startsAt, input.endsAt);
-    const { product, storeName } = await loadListedProduct(input.productId);
-    await assertDiscountOnVariants(input.productId, input.discountType, input.discountValue);
-    await assertNoOpenDeal(input.productId);
 
-    const created = await FlashDealModel.create({
-      productId: product._id,
-      discountType: input.discountType,
-      discountValue: input.discountValue,
+    const created = await FlashDealCampaignModel.create({
+      name: input.name.trim(),
       startsAt: input.startsAt,
       endsAt: input.endsAt,
     });
 
-    return toDto(created, product, storeName);
+    return campaignDto(created, 0);
   },
 
-  async update(id: string, input: UpdateFlashDealInput) {
-    const deal = await FlashDealModel.findById(id);
-
-    if (!deal) {
-      throw AppError.notFound('Flash deal not found');
-    }
-
+  async update(id: string, input: UpdateFlashDealCampaignInput) {
+    await ensureMigrated();
+    const campaign = await loadCampaign(id);
     const now = new Date();
 
-    if (deal.endsAt <= now) {
+    if (campaign.endsAt <= now) {
       throw AppError.validation('Ended deals cannot be edited');
     }
 
-    const startsAt = input.startsAt ?? deal.startsAt;
-    const endsAt = input.endsAt ?? deal.endsAt;
-    const discountType = input.discountType ?? deal.discountType;
-    const discountValue = input.discountValue ?? deal.discountValue;
-
+    const startsAt = input.startsAt ?? campaign.startsAt;
+    const endsAt = input.endsAt ?? campaign.endsAt;
     assertDealWindow(startsAt, endsAt);
-    await assertDiscountOnVariants(String(deal.productId), discountType, discountValue);
 
-    deal.discountType = discountType;
-    deal.discountValue = discountValue;
-    deal.startsAt = startsAt;
-    deal.endsAt = endsAt;
-    await deal.save();
+    if (input.name !== undefined) {
+      campaign.name = input.name.trim();
+    }
 
-    const product = await ProductModel.findById(deal.productId).select('name slug storeId');
-    const store = await StoreModel.findById(product!.storeId).select('name');
+    campaign.startsAt = startsAt;
+    campaign.endsAt = endsAt;
+    await campaign.save();
 
-    return toDto(deal, product!, store?.name ?? '');
+    const counts = await itemCountsByCampaign([campaign._id]);
+    return campaignDto(campaign, counts.get(String(campaign._id)) ?? 0);
   },
 
   async endNow(id: string) {
-    const deal = await FlashDealModel.findById(id);
+    await ensureMigrated();
+    const campaign = await loadCampaign(id);
+    campaign.endsAt = new Date();
+    await campaign.save();
 
-    if (!deal) {
-      throw AppError.notFound('Flash deal not found');
-    }
+    const counts = await itemCountsByCampaign([campaign._id]);
+    return campaignDto(campaign, counts.get(String(campaign._id)) ?? 0);
+  },
 
-    deal.endsAt = new Date();
-    await deal.save();
+  async getById(id: string): Promise<FlashDealCampaignDetailDto> {
+    await ensureMigrated();
+    const campaign = await loadCampaign(id);
+    const items = await FlashDealItemModel.find({ campaignId: campaign._id })
+      .sort({ createdAt: 1 })
+      .lean();
 
-    const product = await ProductModel.findById(deal.productId).select('name slug storeId');
-    const store = await StoreModel.findById(product!.storeId).select('name');
-
-    return toDto(deal, product!, store?.name ?? '');
+    return {
+      ...campaignDto(campaign, items.length),
+      items: await enrichItems(items),
+    };
   },
 
   async listManage(query: ListFlashDealsQuery) {
+    await ensureMigrated();
     const now = new Date();
     const filter = statusFilter(query.status, now);
     const skip = (query.page - 1) * query.limit;
-    const [deals, total] = await Promise.all([
-      FlashDealModel.find(filter)
+    const [campaigns, total] = await Promise.all([
+      FlashDealCampaignModel.find(filter)
         .sort(
           query.status === 'ended'
             ? { endsAt: -1 }
@@ -355,57 +419,162 @@ export const flashDealService = {
         .skip(skip)
         .limit(query.limit)
         .lean(),
-      FlashDealModel.countDocuments(filter),
+      FlashDealCampaignModel.countDocuments(filter),
     ]);
 
-    const productIds = deals.map((deal) => deal.productId);
-    const products = await ProductModel.find({ _id: { $in: productIds } })
-      .select('name slug storeId')
-      .lean();
-    const productsById = new Map(products.map((product) => [String(product._id), product]));
-    const storeIds = [...new Set(products.map((product) => String(product.storeId)))];
-    const stores = await StoreModel.find({ _id: { $in: storeIds } })
-      .select('name')
-      .lean();
-    const storesById = new Map(stores.map((store) => [String(store._id), store.name]));
+    const counts = await itemCountsByCampaign(campaigns.map((campaign) => campaign._id));
 
     return {
-      items: deals.map((deal) => {
-        const product = productsById.get(String(deal.productId));
-
-        return toDto(
-          deal,
-          product ?? { name: '', slug: '' },
-          storesById.get(String(product?.storeId)) ?? '',
-        );
-      }),
+      items: campaigns.map((campaign) =>
+        campaignDto(campaign as FlashDealCampaign, counts.get(String(campaign._id)) ?? 0),
+      ),
       page: query.page,
       limit: query.limit,
       total,
     };
   },
 
+  async addItem(campaignId: string, input: CreateFlashDealItemInput) {
+    await ensureMigrated();
+    const campaign = await loadCampaign(campaignId);
+    const now = new Date();
+
+    if (campaign.endsAt <= now) {
+      throw AppError.validation('Cannot add products to an ended flash deal');
+    }
+
+    const { product, storeName } = await loadListedProduct(input.productId);
+    await assertDiscountOnVariants(input.productId, input.discountType, input.discountValue);
+    await assertNoOpenItemForProduct(input.productId);
+
+    try {
+      const created = await FlashDealItemModel.create({
+        campaignId: campaign._id,
+        productId: product._id,
+        discountType: input.discountType,
+        discountValue: input.discountValue,
+      });
+
+      return itemDto(created, product, storeName);
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error &&
+        'code' in error &&
+        (error as { code?: number }).code === 11000
+      ) {
+        throw AppError.conflict('This product is already in the flash deal');
+      }
+
+      throw error;
+    }
+  },
+
+  async updateItem(campaignId: string, itemId: string, input: UpdateFlashDealItemInput) {
+    await ensureMigrated();
+    const campaign = await loadCampaign(campaignId);
+    const now = new Date();
+
+    if (campaign.endsAt <= now) {
+      throw AppError.validation('Ended deals cannot be edited');
+    }
+
+    if (!Types.ObjectId.isValid(itemId)) {
+      throw AppError.notFound('Flash deal product not found');
+    }
+
+    const item = await FlashDealItemModel.findOne({
+      _id: itemId,
+      campaignId: campaign._id,
+    });
+
+    if (!item) {
+      throw AppError.notFound('Flash deal product not found');
+    }
+
+    const discountType = input.discountType ?? item.discountType;
+    const discountValue = input.discountValue ?? item.discountValue;
+    await assertDiscountOnVariants(String(item.productId), discountType, discountValue);
+
+    item.discountType = discountType;
+    item.discountValue = discountValue;
+    await item.save();
+
+    const product = await ProductModel.findById(item.productId).select('name slug storeId');
+    const store = await StoreModel.findById(product!.storeId).select('name');
+
+    return itemDto(item, product!, store?.name ?? '');
+  },
+
+  async removeItem(campaignId: string, itemId: string) {
+    await ensureMigrated();
+    const campaign = await loadCampaign(campaignId);
+
+    if (!Types.ObjectId.isValid(itemId)) {
+      throw AppError.notFound('Flash deal product not found');
+    }
+
+    const deleted = await FlashDealItemModel.findOneAndDelete({
+      _id: itemId,
+      campaignId: campaign._id,
+    });
+
+    if (!deleted) {
+      throw AppError.notFound('Flash deal product not found');
+    }
+  },
+
   async findActiveByProductIds(productIds: string[], now = new Date()) {
+    await ensureMigrated();
+
     if (productIds.length === 0) {
       return new Map<string, ActiveFlashDeal>();
     }
 
-    const deals = await FlashDealModel.find({
-      productId: { $in: productIds },
+    const activeCampaigns = await FlashDealCampaignModel.find({
       startsAt: { $lte: now },
       endsAt: { $gt: now },
+    })
+      .select('_id startsAt endsAt')
+      .lean();
+
+    if (activeCampaigns.length === 0) {
+      return new Map<string, ActiveFlashDeal>();
+    }
+
+    const campaignsById = new Map(
+      activeCampaigns.map((campaign) => [String(campaign._id), campaign]),
+    );
+
+    const items = await FlashDealItemModel.find({
+      productId: { $in: productIds },
+      campaignId: { $in: activeCampaigns.map((campaign) => campaign._id) },
     }).lean();
 
     const map = new Map<string, ActiveFlashDeal>();
 
-    for (const deal of deals) {
-      map.set(String(deal.productId), {
-        id: String(deal._id),
-        productId: String(deal.productId),
-        discountType: deal.discountType,
-        discountValue: deal.discountValue,
-        startsAt: deal.startsAt,
-        endsAt: deal.endsAt,
+    for (const item of items) {
+      const campaign = campaignsById.get(String(item.campaignId));
+
+      if (!campaign) {
+        continue;
+      }
+
+      const productId = String(item.productId);
+      const existing = map.get(productId);
+
+      if (existing && existing.endsAt.getTime() <= campaign.endsAt.getTime()) {
+        continue;
+      }
+
+      map.set(productId, {
+        id: String(item._id),
+        campaignId: String(campaign._id),
+        productId,
+        discountType: item.discountType,
+        discountValue: item.discountValue,
+        startsAt: campaign.startsAt,
+        endsAt: campaign.endsAt,
       });
     }
 
@@ -418,18 +587,33 @@ export const flashDealService = {
   },
 
   async listActiveProductIds(now = new Date()) {
-    const deals = await FlashDealModel.find({
+    await ensureMigrated();
+    const activeCampaigns = await FlashDealCampaignModel.find({
       startsAt: { $lte: now },
       endsAt: { $gt: now },
     })
-      .select('productId discountType discountValue endsAt')
+      .select('_id endsAt')
       .lean();
 
-    return deals.map((deal) => ({
-      productId: String(deal.productId),
-      discountType: deal.discountType,
-      discountValue: deal.discountValue,
-      endsAt: deal.endsAt,
+    if (activeCampaigns.length === 0) {
+      return [];
+    }
+
+    const endsByCampaign = new Map(
+      activeCampaigns.map((campaign) => [String(campaign._id), campaign.endsAt]),
+    );
+
+    const items = await FlashDealItemModel.find({
+      campaignId: { $in: activeCampaigns.map((campaign) => campaign._id) },
+    })
+      .select('productId campaignId discountType discountValue')
+      .lean();
+
+    return items.map((item) => ({
+      productId: String(item.productId),
+      discountType: item.discountType,
+      discountValue: item.discountValue,
+      endsAt: endsByCampaign.get(String(item.campaignId)) ?? now,
       savings: 0,
     }));
   },

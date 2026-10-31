@@ -4,23 +4,19 @@ import { requirePermissions } from '../../common/middleware/authorize';
 import { validate } from '../../common/middleware/validate';
 import { flashDealController } from './flash-deal.controller';
 import {
-  createFlashDealSchema,
+  createFlashDealCampaignSchema,
+  createFlashDealItemSchema,
   flashDealIdParamsSchema,
+  flashDealItemParamsSchema,
   listFlashDealsQuerySchema,
-  updateFlashDealSchema,
-  updateFlashDealSettingsSchema,
+  updateFlashDealCampaignSchema,
+  updateFlashDealItemSchema,
 } from './flash-deal.validator';
 
 export const flashDealRouter = Router();
 
 flashDealRouter.get('/settings', flashDealController.getSettings);
-
-flashDealRouter.put(
-  '/settings',
-  ...requirePermissions(Permission.adminPromotions),
-  validate({ body: updateFlashDealSettingsSchema }),
-  flashDealController.updateSettings,
-);
+flashDealRouter.get('/meta', flashDealController.getPublicMeta);
 
 flashDealRouter.get(
   '/manage',
@@ -32,14 +28,21 @@ flashDealRouter.get(
 flashDealRouter.post(
   '/',
   ...requirePermissions(Permission.adminPromotions),
-  validate({ body: createFlashDealSchema }),
+  validate({ body: createFlashDealCampaignSchema }),
   flashDealController.create,
+);
+
+flashDealRouter.get(
+  '/:id',
+  ...requirePermissions(Permission.adminPromotions),
+  validate({ params: flashDealIdParamsSchema }),
+  flashDealController.getById,
 );
 
 flashDealRouter.patch(
   '/:id',
   ...requirePermissions(Permission.adminPromotions),
-  validate({ params: flashDealIdParamsSchema, body: updateFlashDealSchema }),
+  validate({ params: flashDealIdParamsSchema, body: updateFlashDealCampaignSchema }),
   flashDealController.update,
 );
 
@@ -48,4 +51,25 @@ flashDealRouter.post(
   ...requirePermissions(Permission.adminPromotions),
   validate({ params: flashDealIdParamsSchema }),
   flashDealController.endNow,
+);
+
+flashDealRouter.post(
+  '/:id/items',
+  ...requirePermissions(Permission.adminPromotions),
+  validate({ params: flashDealIdParamsSchema, body: createFlashDealItemSchema }),
+  flashDealController.addItem,
+);
+
+flashDealRouter.patch(
+  '/:id/items/:itemId',
+  ...requirePermissions(Permission.adminPromotions),
+  validate({ params: flashDealItemParamsSchema, body: updateFlashDealItemSchema }),
+  flashDealController.updateItem,
+);
+
+flashDealRouter.delete(
+  '/:id/items/:itemId',
+  ...requirePermissions(Permission.adminPromotions),
+  validate({ params: flashDealItemParamsSchema }),
+  flashDealController.removeItem,
 );

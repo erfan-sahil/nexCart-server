@@ -1,12 +1,18 @@
 import type { Request, Response } from 'express';
 import { flashDealService } from './flash-deal.service';
 import { asyncHandler } from '../../common/http/asyncHandler';
-import { sendCreated, sendPaginated, sendSuccess } from '../../common/http/sendResponse';
+import {
+  sendCreated,
+  sendNoContent,
+  sendPaginated,
+  sendSuccess,
+} from '../../common/http/sendResponse';
 import type {
-  CreateFlashDealInput,
+  CreateFlashDealCampaignInput,
+  CreateFlashDealItemInput,
   ListFlashDealsQuery,
-  UpdateFlashDealInput,
-  UpdateFlashDealSettingsInput,
+  UpdateFlashDealCampaignInput,
+  UpdateFlashDealItemInput,
 } from './flash-deal.validator';
 
 const routeParam = (value: string | string[] | undefined) =>
@@ -17,9 +23,9 @@ const getSettings = asyncHandler(async (_req: Request, res: Response) => {
   sendSuccess(res, settings, { message: 'Flash deal settings fetched' });
 });
 
-const updateSettings = asyncHandler(async (req: Request, res: Response) => {
-  const settings = await flashDealService.updateSettings(req.body as UpdateFlashDealSettingsInput);
-  sendSuccess(res, settings, { message: 'Flash deal settings updated' });
+const getPublicMeta = asyncHandler(async (_req: Request, res: Response) => {
+  const meta = await flashDealService.getPublicMeta();
+  sendSuccess(res, meta, { message: 'Flash deal meta fetched' });
 });
 
 const listManage = asyncHandler(async (req: Request, res: Response) => {
@@ -33,29 +39,60 @@ const listManage = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+const getById = asyncHandler(async (req: Request, res: Response) => {
+  const campaign = await flashDealService.getById(routeParam(req.params.id));
+  sendSuccess(res, campaign, { message: 'Flash deal fetched' });
+});
+
 const create = asyncHandler(async (req: Request, res: Response) => {
-  const deal = await flashDealService.create(req.body as CreateFlashDealInput);
-  sendCreated(res, deal, 'Flash deal created');
+  const campaign = await flashDealService.create(req.body as CreateFlashDealCampaignInput);
+  sendCreated(res, campaign, 'Flash deal created');
 });
 
 const update = asyncHandler(async (req: Request, res: Response) => {
-  const deal = await flashDealService.update(
+  const campaign = await flashDealService.update(
     routeParam(req.params.id),
-    req.body as UpdateFlashDealInput,
+    req.body as UpdateFlashDealCampaignInput,
   );
-  sendSuccess(res, deal, { message: 'Flash deal updated' });
+  sendSuccess(res, campaign, { message: 'Flash deal updated' });
 });
 
 const endNow = asyncHandler(async (req: Request, res: Response) => {
-  const deal = await flashDealService.endNow(routeParam(req.params.id));
-  sendSuccess(res, deal, { message: 'Flash deal ended' });
+  const campaign = await flashDealService.endNow(routeParam(req.params.id));
+  sendSuccess(res, campaign, { message: 'Flash deal ended' });
+});
+
+const addItem = asyncHandler(async (req: Request, res: Response) => {
+  const item = await flashDealService.addItem(
+    routeParam(req.params.id),
+    req.body as CreateFlashDealItemInput,
+  );
+  sendCreated(res, item, 'Flash deal product added');
+});
+
+const updateItem = asyncHandler(async (req: Request, res: Response) => {
+  const item = await flashDealService.updateItem(
+    routeParam(req.params.id),
+    routeParam(req.params.itemId),
+    req.body as UpdateFlashDealItemInput,
+  );
+  sendSuccess(res, item, { message: 'Flash deal product updated' });
+});
+
+const removeItem = asyncHandler(async (req: Request, res: Response) => {
+  await flashDealService.removeItem(routeParam(req.params.id), routeParam(req.params.itemId));
+  sendNoContent(res);
 });
 
 export const flashDealController = {
   getSettings,
-  updateSettings,
+  getPublicMeta,
   listManage,
+  getById,
   create,
   update,
   endNow,
+  addItem,
+  updateItem,
+  removeItem,
 };

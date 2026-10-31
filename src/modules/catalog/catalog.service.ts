@@ -16,7 +16,6 @@ import { storeService } from '../stores/store.service';
 import { variantService } from '../products/variant.service';
 import type { ListCatalogQuery } from './catalog.validator';
 import { flashDealService } from '../flash-deals/flash-deal.service';
-import { FlashDealModel } from '../flash-deals/flash-deal.model';
 import { sponsoredPlacementService } from '../sponsored-placements/sponsored-placement.service';
 
 type CatalogSort = NonNullable<ListCatalogQuery['sort']>;
@@ -156,10 +155,7 @@ const buildFilter = async (collection: CatalogCollection, query: ListCatalogQuer
 
 const listFlashDealsCollection = async (query: ListCatalogQuery) => {
   const now = new Date();
-  const deals = await FlashDealModel.find({
-    startsAt: { $lte: now },
-    endsAt: { $gt: now },
-  }).lean();
+  const deals = await flashDealService.listActiveProductIds(now);
 
   if (deals.length === 0) {
     return {
@@ -171,7 +167,7 @@ const listFlashDealsCollection = async (query: ListCatalogQuery) => {
     };
   }
 
-  const dealsByProduct = new Map(deals.map((deal) => [String(deal.productId), deal]));
+  const dealsByProduct = new Map(deals.map((deal) => [deal.productId, deal]));
   const gate = await customerGate();
   const products = await ProductModel.find({
     ...gate,
@@ -321,9 +317,9 @@ export const catalogService = {
 
     const exclusions = await sponsoredPlacementService.sectionExclusions();
 
-    const [flashSettings, flashDeals, topSelling, popularStores, trending, newArrivals] =
+    const [flashMeta, flashDeals, topSelling, popularStores, trending, newArrivals] =
       await Promise.all([
-        flashDealService.getSettings(),
+        flashDealService.getPublicMeta(),
         listFlashDealsCollection({ page: 1, limit: HOME_SECTION_LIMITS.flashDeals }),
         listCollectionExcluding(
           'bestsellers',
@@ -349,8 +345,8 @@ export const catalogService = {
 
     return {
       flashDeals: {
-        sectionTitle: flashSettings.sectionTitle,
-        endsAt: flashDeals.endsAt,
+        sectionTitle: flashMeta.sectionTitle,
+        endsAt: flashDeals.endsAt ?? flashMeta.endsAt,
         items: flashDeals.items,
       },
       topSelling: { items: topSelling.items },
@@ -372,15 +368,15 @@ export const catalogService = {
     const result = await listCollection(collection, query);
 
     if (collection === 'flash-deals') {
-      const settings = await flashDealService.getSettings();
+      const meta = await flashDealService.getPublicMeta();
 
       return {
         items: result.items,
         page: result.page,
         limit: result.limit,
         total: result.total,
-        endsAt: result.endsAt,
-        sectionTitle: settings.sectionTitle,
+        endsAt: result.endsAt ?? meta.endsAt,
+        sectionTitle: meta.sectionTitle,
       };
     }
 
