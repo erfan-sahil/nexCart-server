@@ -52,7 +52,7 @@ export const orderService = {
       handler: async () => {
         const resolved = await resolveCheckoutLines(input.items);
         const itemsSubtotal = money(resolved.reduce((sum, line) => sum + line.lineTotal, 0));
-        const totals = buildTotals(input.paymentMethod, itemsSubtotal);
+        const totals = await buildTotals(input.paymentMethod, itemsSubtotal);
         const reservations = await reserveStock(resolved);
 
         try {

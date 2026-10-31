@@ -16,6 +16,7 @@ import {
   vendorFulfillmentRouter,
 } from '../modules/fulfillment/fulfillment.routes';
 import { productReviewRouter } from '../modules/reviews/review.routes';
+import { siteSettingsRouter } from '../modules/site-settings/site-settings.routes';
 import {
   productReportInboxRouter,
   productReportOnProductRouter,
@@ -42,6 +43,7 @@ apiRouter.use('/products', productReportOnProductRouter);
 apiRouter.use('/product-reports', productReportInboxRouter);
 apiRouter.use('/inventory', inventoryRouter);
 apiRouter.use('/orders', orderRouter);
+apiRouter.use('/site-settings', siteSettingsRouter);
 apiRouter.use('/wishlist', wishlistRouter);
 apiRouter.use('/recently-viewed', recentlyViewedRouter);
 apiRouter.use('/payments/sslcommerz', sslcommerzRouter);

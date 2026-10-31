@@ -27,7 +27,7 @@ export const HOME_SECTION_LIMITS = {
   flashDeals: 6,
   topSelling: 8,
   popularStores: 6,
-  trending: 8,
+  trending: 10,
   newArrivals: 8,
 } as const;
 

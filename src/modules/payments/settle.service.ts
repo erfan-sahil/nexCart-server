@@ -6,6 +6,7 @@ import { AppError } from '../../utils/AppError';
 import { toOrderDto } from '../orders/order.mapper';
 import { releaseExpiredOrderHolds } from '../orders/stock';
 import { fulfillmentService } from '../fulfillment/fulfillment.service';
+import type { CodCollectionStatus, OrderPaymentStatus } from '../orders/constants';
 import type { OrderDto } from '../orders/types';
 import { SSLCOMMERZ_SUCCESS_STATUSES } from './constants';
 import { amountsMatch, validateSslcommerzPayment } from './sslcommerz.client';
@@ -46,6 +47,54 @@ const markAttempt = async (
   >,
 ) => {
   await PaymentAttemptModel.updateOne({ _id: attemptId }, { $set: update });
+};
+
+export const confirmOrderWithNothingDue = async (order: Order): Promise<OrderDto> => {
+  if (order.status === 'confirmed') {
+    return toOrderDto(order);
+  }
+
+  const now = new Date();
+  const nothingToCollect = order.itemsSubtotal <= 0;
+  const totals =
+    order.paymentMethod === 'prepaid' || nothingToCollect
+      ? {
+          amountPaid: 0,
+          balanceDue: 0,
+          paymentStatus: 'paid' as OrderPaymentStatus,
+          codCollectionStatus: 'not_applicable' as CodCollectionStatus,
+        }
+      : {
+          amountPaid: 0,
+          balanceDue: order.itemsSubtotal,
+          paymentStatus: 'unpaid' as OrderPaymentStatus,
+          codCollectionStatus: 'pending' as CodCollectionStatus,
+        };
+
+  const confirmed = await OrderModel.findOneAndUpdate(
+    {
+      _id: order._id,
+      status: 'awaiting_payment',
+      stockReleasedAt: null,
+      stockHoldExpiresAt: { $gt: now },
+    },
+    { $set: { status: 'confirmed', ...totals } },
+    { new: true },
+  );
+
+  if (!confirmed) {
+    const latest = await OrderModel.findById(order._id);
+
+    if (latest?.status === 'confirmed') {
+      return toOrderDto(latest);
+    }
+
+    throw AppError.validation('This order can no longer be confirmed');
+  }
+
+  await fulfillmentService.bootstrapForOrder(confirmed._id);
+
+  return toOrderDto(confirmed);
 };
 
 export const settlePayment = async (input: SettleInput): Promise<OrderDto | null> => {

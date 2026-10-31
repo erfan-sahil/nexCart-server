@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Types } from 'mongoose';
 import { env } from '../../config/env';
+import { deliveryFeeFor, siteSettingsService } from '../site-settings/site-settings.service';
 import { ProductModel } from '../../models/product.model';
 import { ProductVariantModel } from '../../models/productVariant.model';
 import { isStoreListed, StoreModel } from '../../models/store.model';
@@ -49,11 +50,12 @@ export const buildOrderNumber = () => {
   return `NC${date}${suffix}`;
 };
 
-export const buildTotals = (
+export const buildTotals = async (
   paymentMethod: OrderPaymentMethod,
   itemsSubtotal: number,
-): OrderTotalsDto => {
-  const deliveryFee = money(env.ORDER_DELIVERY_FEE);
+): Promise<OrderTotalsDto> => {
+  const settings = await siteSettingsService.get();
+  const deliveryFee = deliveryFeeFor(itemsSubtotal, settings);
   const subtotal = money(itemsSubtotal);
   const grandTotal = money(subtotal + deliveryFee);
   const amountDueNow = paymentMethod === 'prepaid' ? grandTotal : deliveryFee;
@@ -179,7 +181,7 @@ export const quoteCheckout = async (input: {
     items: resolved.map(
       ({ productObjectId: _p, variantObjectId: _v, storeObjectId: _s, ...item }) => item,
     ),
-    totals: buildTotals(input.paymentMethod, itemsSubtotal),
+    totals: await buildTotals(input.paymentMethod, itemsSubtotal),
   };
 };
 
