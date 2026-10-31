@@ -13,6 +13,8 @@ import {
 } from './constants';
 import type { OrderItemDto, OrderQuoteDto, OrderTotalsDto } from './types';
 import { AppError } from '../../common/errors/AppError';
+import { flashDealService } from '../flash-deals/flash-deal.service';
+import { resolveCheckoutUnitPrice } from '../flash-deals/flash-deal-pricing';
 
 export type CheckoutLineInput = {
   variantId: string;
@@ -20,22 +22,6 @@ export type CheckoutLineInput = {
 };
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-
-const currentPriceFor = (
-  price: number,
-  discountType: 'percent' | 'amount' | null,
-  discountValue: number | null,
-) => {
-  if (!discountType || discountValue === null) {
-    return money(price);
-  }
-
-  if (discountType === 'percent') {
-    return money(price * (1 - discountValue / 100));
-  }
-
-  return money(price - discountValue);
-};
 
 const isListedProduct = (product: {
   status: string;
@@ -142,12 +128,20 @@ export const resolveCheckoutLines = async (lines: CheckoutLineInput[]): Promise<
       throw AppError.validation('One or more items are no longer available');
     }
 
-    const unitPrice = currentPriceFor(
+    const flashDeal = await flashDealService.findActiveDealForProduct(String(product._id));
+
+    const unitPrice = resolveCheckoutUnitPrice(
       variant.price,
       variant.discountType === 'percent' || variant.discountType === 'amount'
         ? variant.discountType
         : null,
       variant.discountValue ?? null,
+      flashDeal
+        ? {
+            discountType: flashDeal.discountType,
+            discountValue: flashDeal.discountValue,
+          }
+        : null,
     );
 
     resolved.push({

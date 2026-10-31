@@ -12,6 +12,7 @@ export type CatalogProductSection = {
 
 export type CatalogFlashSection = CatalogProductSection & {
   endsAt: string | null;
+  sectionTitle: string;
 };
 
 export type CatalogHomeDto = {

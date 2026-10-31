@@ -11,6 +11,7 @@ import {
 import { AttributeModel } from '../attributes/attribute.model';
 import { CategoryAttributeModel } from '../attributes/category-attribute.model';
 import { CategoryModel } from '../categories/category.model';
+import { flashDealService } from '../flash-deals/flash-deal.service';
 import { ProductModel, type Product } from './product.model';
 
 type ProductDocument = HydratedDocument<Product>;
@@ -653,7 +654,8 @@ const present = async (product: ProductDocument) => {
     throw AppError.internal('Product could not be loaded');
   }
 
-  return dto;
+  const [withFlash] = await flashDealService.applyFlashOffers([dto]);
+  return withFlash;
 };
 
 const ensureVisible = async (product: ProductDocument, viewer?: ProductViewer) => {
@@ -1051,7 +1053,8 @@ export const productService = {
   },
 
   async presentMany(products: ProductDocument[]) {
-    return mapProducts(products.map((product) => readProduct(product)));
+    const items = await mapProducts(products.map((product) => readProduct(product)));
+    return flashDealService.applyFlashOffers(items);
   },
 
   async listPublic(query: ListPublicProductsQuery) {

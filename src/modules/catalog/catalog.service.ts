@@ -15,6 +15,9 @@ import { productService } from '../products/product.service';
 import { storeService } from '../stores/store.service';
 import { variantService } from '../products/variant.service';
 import type { ListCatalogQuery } from './catalog.validator';
+import { flashDealService } from '../flash-deals/flash-deal.service';
+import { FlashDealModel } from '../flash-deals/flash-deal.model';
+import { sponsoredPlacementService } from '../sponsored-placements/sponsored-placement.service';
 
 type CatalogSort = NonNullable<ListCatalogQuery['sort']>;
 
@@ -70,12 +73,9 @@ const customerGate = async (): Promise<FilterQuery<Product>> => ({
   storeId: { $in: await listedStoreIds() },
 });
 
-const membership = (collection: CatalogCollection, now: Date): FilterQuery<Product> => {
+const membership = (collection: CatalogCollection, _now: Date): FilterQuery<Product> => {
   if (collection === 'flash-deals') {
-    return {
-      'listing.dealStartsAt': { $lte: now },
-      'listing.dealEndsAt': { $gt: now },
-    };
+    return {};
   }
 
   if (collection === 'bestsellers') {
@@ -154,25 +154,129 @@ const buildFilter = async (collection: CatalogCollection, query: ListCatalogQuer
   return { $and: clauses };
 };
 
-const soonestDealEnd = (products: { listing?: { dealEndsAt?: Date | null } }[]) => {
-  let soonest: Date | null = null;
+const listFlashDealsCollection = async (query: ListCatalogQuery) => {
+  const now = new Date();
+  const deals = await FlashDealModel.find({
+    startsAt: { $lte: now },
+    endsAt: { $gt: now },
+  }).lean();
 
-  for (const product of products) {
-    const endsAt = product.listing?.dealEndsAt;
-
-    if (!endsAt) {
-      continue;
-    }
-
-    if (!soonest || endsAt < soonest) {
-      soonest = endsAt;
-    }
+  if (deals.length === 0) {
+    return {
+      items: [],
+      page: query.page,
+      limit: query.limit,
+      total: 0,
+      endsAt: null,
+    };
   }
 
-  return soonest ? soonest.toISOString() : null;
+  const dealsByProduct = new Map(deals.map((deal) => [String(deal.productId), deal]));
+  const gate = await customerGate();
+  const products = await ProductModel.find({
+    ...gate,
+    _id: { $in: deals.map((deal) => deal.productId) },
+  });
+
+  const scored = await Promise.all(
+    products.map(async (product) => {
+      const deal = dealsByProduct.get(String(product._id));
+
+      if (!deal) {
+        return null;
+      }
+
+      const savings = await flashDealService.maxSavingsForProduct(String(product._id), {
+        discountType: deal.discountType,
+        discountValue: deal.discountValue,
+      });
+
+      return {
+        product,
+        endsAt: deal.endsAt,
+        savings,
+      };
+    }),
+  );
+
+  const eligible = scored
+    .filter((row): row is NonNullable<typeof row> => row !== null && row.savings > 0)
+    .sort(
+      (left, right) =>
+        left.endsAt.getTime() - right.endsAt.getTime() || right.savings - left.savings,
+    );
+
+  const total = eligible.length;
+  const skip = (query.page - 1) * query.limit;
+  const pageRows = eligible.slice(skip, skip + query.limit);
+  const presented = await productService.presentMany(pageRows.map((row) => row.product));
+  const endsAt = eligible.length > 0 ? eligible[0]!.endsAt.toISOString() : null;
+
+  return {
+    items: presented,
+    page: query.page,
+    limit: query.limit,
+    total,
+    endsAt,
+  };
+};
+
+const listCollectionExcluding = async (
+  collection: CatalogCollection,
+  query: ListCatalogQuery,
+  excludeProductId?: string,
+) => {
+  if (!excludeProductId) {
+    return listCollection(collection, query);
+  }
+
+  const target = query.limit;
+  const collected: Awaited<ReturnType<typeof listCollection>>['items'] = [];
+  let page = query.page;
+  let total = 0;
+
+  while (collected.length < target && page <= 10) {
+    const batch = await listCollection(collection, { ...query, page, limit: target + 4 });
+
+    total = batch.total;
+
+    for (const item of batch.items) {
+      if (item.id === excludeProductId) {
+        continue;
+      }
+
+      if (collected.some((existing) => existing.id === item.id)) {
+        continue;
+      }
+
+      collected.push(item);
+
+      if (collected.length >= target) {
+        break;
+      }
+    }
+
+    if (batch.items.length === 0) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return {
+    items: collected.slice(0, target),
+    page: query.page,
+    limit: query.limit,
+    total,
+    endsAt: null,
+  };
 };
 
 const listCollection = async (collection: CatalogCollection, query: ListCatalogQuery) => {
+  if (collection === 'flash-deals') {
+    return listFlashDealsCollection(query);
+  }
+
   const filter = await buildFilter(collection, query);
   const sort = query.sort ? SORTS[query.sort] : DEFAULT_SORTS[collection];
   const skip = (query.page - 1) * query.limit;
@@ -186,7 +290,7 @@ const listCollection = async (collection: CatalogCollection, query: ListCatalogQ
     page: query.page,
     limit: query.limit,
     total,
-    endsAt: collection === 'flash-deals' ? soonestDealEnd(products) : null,
+    endsAt: null,
   };
 };
 
@@ -215,20 +319,40 @@ export const catalogService = {
   async home(): Promise<CatalogHomeDto> {
     await ensureCatalogData();
 
-    const [flashDeals, topSelling, popularStores, trending, newArrivals] = await Promise.all([
-      listCollection('flash-deals', { page: 1, limit: HOME_SECTION_LIMITS.flashDeals }),
-      listCollection('bestsellers', { page: 1, limit: HOME_SECTION_LIMITS.topSelling }),
-      storeService.listPublic({
-        page: 1,
-        limit: HOME_SECTION_LIMITS.popularStores,
-        sort: 'popular',
-      }),
-      listCollection('trending', { page: 1, limit: HOME_SECTION_LIMITS.trending }),
-      listCollection('new-arrivals', { page: 1, limit: HOME_SECTION_LIMITS.newArrivals }),
-    ]);
+    const exclusions = await sponsoredPlacementService.sectionExclusions();
+
+    const [flashSettings, flashDeals, topSelling, popularStores, trending, newArrivals] =
+      await Promise.all([
+        flashDealService.getSettings(),
+        listFlashDealsCollection({ page: 1, limit: HOME_SECTION_LIMITS.flashDeals }),
+        listCollectionExcluding(
+          'bestsellers',
+          { page: 1, limit: HOME_SECTION_LIMITS.topSelling },
+          exclusions.get('top-selling'),
+        ),
+        storeService.listPublic({
+          page: 1,
+          limit: HOME_SECTION_LIMITS.popularStores,
+          sort: 'popular',
+        }),
+        listCollectionExcluding(
+          'trending',
+          { page: 1, limit: HOME_SECTION_LIMITS.trending },
+          exclusions.get('trending'),
+        ),
+        listCollectionExcluding(
+          'new-arrivals',
+          { page: 1, limit: HOME_SECTION_LIMITS.newArrivals },
+          exclusions.get('new-arrivals'),
+        ),
+      ]);
 
     return {
-      flashDeals: { endsAt: flashDeals.endsAt, items: flashDeals.items },
+      flashDeals: {
+        sectionTitle: flashSettings.sectionTitle,
+        endsAt: flashDeals.endsAt,
+        items: flashDeals.items,
+      },
       topSelling: { items: topSelling.items },
       popularStores: { items: popularStores.items },
       trending: { items: trending.items },
@@ -246,6 +370,19 @@ export const catalogService = {
     await ensureCatalogData();
 
     const result = await listCollection(collection, query);
+
+    if (collection === 'flash-deals') {
+      const settings = await flashDealService.getSettings();
+
+      return {
+        items: result.items,
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        endsAt: result.endsAt,
+        sectionTitle: settings.sectionTitle,
+      };
+    }
 
     return {
       items: result.items,

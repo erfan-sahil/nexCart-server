@@ -3,6 +3,7 @@ import { attributeRouter } from './modules/attributes';
 import { authRouter } from './modules/auth';
 import { catalogRouter } from './modules/catalog';
 import { categoryRouter } from './modules/categories';
+import { flashDealRouter } from './modules/flash-deals';
 import {
   adminFulfillmentRouter,
   adminOrderFulfillmentRouter,
@@ -17,6 +18,7 @@ import { productReportInboxRouter, productReportOnProductRouter } from './module
 import { productRouter } from './modules/products';
 import { recentlyViewedRouter } from './modules/recently-viewed';
 import { productReviewRouter } from './modules/reviews';
+import { sponsoredPlacementRouter } from './modules/sponsored-placements';
 import { siteSettingsRouter } from './modules/site-settings';
 import { storeRouter } from './modules/stores';
 import { userRouter } from './modules/users';
@@ -33,6 +35,8 @@ apiRouter.use('/vendor-applications', vendorApplicationRouter);
 apiRouter.use('/stores', storeRouter);
 apiRouter.use('/attributes', attributeRouter);
 apiRouter.use('/categories', categoryRouter);
+apiRouter.use('/flash-deals', flashDealRouter);
+apiRouter.use('/sponsored-placements', sponsoredPlacementRouter);
 apiRouter.use('/catalog', catalogRouter);
 apiRouter.use('/products', productRouter);
 apiRouter.use('/products', productReviewRouter);
