@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { recommendedService } from '../modules/recommended/recommended.service';
 import { catalogService } from '../services/catalog.service';
 import type { CatalogCollectionParam } from '../types/catalog';
 import { asyncHandler } from '../utils/asyncHandler';
@@ -38,8 +39,30 @@ const related = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, items, { message: 'Related products fetched' });
 });
 
+const recommendations = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query as unknown as ListCatalogQuery;
+  const userId = req.auth?.user.id;
+  const role = req.auth?.user.role;
+  const result = await recommendedService.list(userId, role, query);
+  const totalPages = query.limit > 0 ? Math.ceil(result.total / query.limit) : 0;
+
+  sendSuccess(res, result.items, {
+    message: 'Recommendations fetched',
+    meta: {
+      pagination: {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages,
+      },
+      personalized: result.personalized,
+    },
+  });
+});
+
 export const catalogController = {
   home,
   listCollection,
   related,
+  recommendations,
 };
