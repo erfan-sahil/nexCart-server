@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CATEGORY_LEVELS } from './constants';
+import { CATEGORY_LEVELS, MAX_FEATURED_CATEGORIES } from './constants';
 import type { CategoryLevel } from './types';
 
 const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
@@ -79,7 +79,17 @@ export const categorySlugParamsSchema = z.object({
   slug: slugSchema,
 });
 
+export const setCategoryFeaturedSchema = z.object({
+  isFeatured: z.boolean(),
+});
+
+export const updateFeaturedOrderSchema = z.object({
+  categoryIds: z.array(objectIdSchema).min(1).max(MAX_FEATURED_CATEGORIES),
+});
+
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 export type ListCategoriesQuery = z.infer<typeof listCategoriesQuerySchema>;
 export type TreeCategoriesQuery = z.infer<typeof treeCategoriesQuerySchema>;
+export type SetCategoryFeaturedInput = z.infer<typeof setCategoryFeaturedSchema>;
+export type UpdateFeaturedOrderInput = z.infer<typeof updateFeaturedOrderSchema>;

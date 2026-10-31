@@ -52,6 +52,15 @@ const categorySchema = new Schema(
       default: 0,
       min: 0,
     },
+    isFeatured: {
+      type: Boolean,
+      default: false,
+    },
+    featuredOrder: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   {
     timestamps: true,
@@ -61,6 +70,7 @@ const categorySchema = new Schema(
 
 categorySchema.index({ parentId: 1, sortOrder: 1, name: 1 });
 categorySchema.index({ level: 1, isActive: 1, sortOrder: 1 });
+categorySchema.index({ isFeatured: 1, featuredOrder: 1, name: 1 });
 categorySchema.index({ ancestors: 1 });
 
 export type Category = InferSchemaType<typeof categorySchema> & {

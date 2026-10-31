@@ -13,6 +13,8 @@ import {
   listCategoriesQuerySchema,
   treeCategoriesQuerySchema,
   updateCategorySchema,
+  setCategoryFeaturedSchema,
+  updateFeaturedOrderSchema,
 } from './category.validator';
 
 export const categoryRouter = Router();
@@ -21,6 +23,15 @@ categoryRouter.get(
   '/tree',
   validate({ query: treeCategoriesQuerySchema }),
   categoryController.treeCategories,
+);
+
+categoryRouter.get('/featured', categoryController.listFeaturedCategories);
+
+categoryRouter.patch(
+  '/featured-order',
+  ...requirePermissions(Permission.adminCategories),
+  validate({ body: updateFeaturedOrderSchema }),
+  categoryController.updateFeaturedOrder,
 );
 
 categoryRouter.get(
@@ -73,6 +84,13 @@ categoryRouter.patch(
   ...requirePermissions(Permission.adminCategories),
   validate({ params: categoryIdParamsSchema, body: updateCategorySchema }),
   categoryController.updateCategory,
+);
+
+categoryRouter.patch(
+  '/:id/featured',
+  ...requirePermissions(Permission.adminCategories),
+  validate({ params: categoryIdParamsSchema, body: setCategoryFeaturedSchema }),
+  categoryController.setCategoryFeatured,
 );
 
 categoryRouter.delete(

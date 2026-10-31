@@ -7,8 +7,10 @@ import { sendCreated, sendPaginated, sendSuccess } from '../../common/http/sendR
 import type {
   CreateCategoryInput,
   ListCategoriesQuery,
+  SetCategoryFeaturedInput,
   TreeCategoriesQuery,
   UpdateCategoryInput,
+  UpdateFeaturedOrderInput,
 } from './category.validator';
 
 const routeParam = (value: string | string[] | undefined) =>
@@ -95,13 +97,36 @@ const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, result, { message: 'Category deleted' });
 });
 
+const listFeaturedCategories = asyncHandler(async (_req: Request, res: Response) => {
+  const categories = await categoryService.listFeatured();
+
+  sendSuccess(res, categories, { message: 'Featured categories fetched' });
+});
+
+const setCategoryFeatured = asyncHandler(async (req: Request, res: Response) => {
+  const body = req.body as SetCategoryFeaturedInput;
+  const category = await categoryService.setFeatured(routeParam(req.params.id), body.isFeatured);
+
+  sendSuccess(res, category, { message: 'Category featured status updated' });
+});
+
+const updateFeaturedOrder = asyncHandler(async (req: Request, res: Response) => {
+  const body = req.body as UpdateFeaturedOrderInput;
+  const categories = await categoryService.updateFeaturedOrder(body.categoryIds);
+
+  sendSuccess(res, categories, { message: 'Featured category order updated' });
+});
+
 export const categoryController = {
   listCategories,
   treeCategories,
+  listFeaturedCategories,
   getCategory,
   getCategoryBySlug,
   uploadCategoryImage,
   createCategory,
   updateCategory,
   deleteCategory,
+  setCategoryFeatured,
+  updateFeaturedOrder,
 };

@@ -13,8 +13,14 @@ export type CategoryDto = {
   level: CategoryLevel;
   isActive: boolean;
   sortOrder: number;
+  isFeatured: boolean;
+  featuredOrder: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type FeaturedCategoryDto = CategoryDto & {
+  productCount: number;
 };
 
 export type CategoryBreadcrumb = {

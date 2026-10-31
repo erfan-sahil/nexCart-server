@@ -1,9 +1,15 @@
 import type { FilterQuery, Types } from 'mongoose';
-import { MAX_CATEGORY_LEVEL } from './constants';
+import { CATEGORY_LEVEL, MAX_CATEGORY_LEVEL, MAX_FEATURED_CATEGORIES } from './constants';
 import { CategoryAttributeModel } from '../attributes/category-attribute.model';
 import { CategoryModel, type Category } from './category.model';
 import { ProductModel } from '../products/product.model';
-import type { CategoryDetailDto, CategoryDto, CategoryLevel, CategoryTreeNode } from './types';
+import type {
+  CategoryDetailDto,
+  CategoryDto,
+  CategoryLevel,
+  CategoryTreeNode,
+  FeaturedCategoryDto,
+} from './types';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import { escapeRegex, slugify } from '../../common/utils/slugify';
@@ -25,6 +31,8 @@ type CategoryRecord = {
   level: number;
   isActive: boolean;
   sortOrder: number;
+  isFeatured: boolean;
+  featuredOrder: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -57,6 +65,8 @@ const toDto = (record: CategoryRecord): CategoryDto => ({
   level: toLevel(record.level),
   isActive: record.isActive,
   sortOrder: record.sortOrder,
+  isFeatured: record.isFeatured ?? false,
+  featuredOrder: record.featuredOrder ?? 0,
   createdAt: record.createdAt.toISOString(),
   updatedAt: record.updatedAt.toISOString(),
 });
@@ -136,6 +146,29 @@ const attachProductCounts = async (roots: CategoryTreeNode[]) => {
   });
 
   return roots;
+};
+
+const countFeaturedRoots = () =>
+  CategoryModel.countDocuments({ level: CATEGORY_LEVEL.ROOT, isFeatured: true });
+
+const assertCanFeature = async (category: Category) => {
+  if (category.level !== CATEGORY_LEVEL.ROOT) {
+    throw AppError.validation('Only a root category can be featured');
+  }
+
+  if (!category.isActive) {
+    throw AppError.validation('Only an active category can be featured');
+  }
+
+  if (category.isFeatured) {
+    return;
+  }
+
+  const featuredCount = await countFeaturedRoots();
+
+  if (featuredCount >= MAX_FEATURED_CATEGORIES) {
+    throw AppError.validation(`At most ${MAX_FEATURED_CATEGORIES} categories can be featured`);
+  }
 };
 
 const slugTaken = async (slug: string, excludeId?: string) => {
@@ -367,6 +400,11 @@ export const categoryService = {
 
     if (input.isActive !== undefined) {
       category.isActive = input.isActive;
+
+      if (input.isActive === false) {
+        category.isFeatured = false;
+        category.featuredOrder = 0;
+      }
     }
 
     if (input.sortOrder !== undefined) {
@@ -384,7 +422,10 @@ export const categoryService = {
     }
 
     if (input.isActive === false) {
-      await CategoryModel.updateMany({ ancestors: category._id }, { $set: { isActive: false } });
+      await CategoryModel.updateMany(
+        { ancestors: category._id },
+        { $set: { isActive: false, isFeatured: false, featuredOrder: 0 } },
+      );
     }
 
     if (input.image !== undefined && previousImage !== category.image) {
@@ -409,5 +450,78 @@ export const categoryService = {
     await releaseCategoryImage(image);
 
     return { id: String(category._id) };
+  },
+
+  async listFeatured(): Promise<FeaturedCategoryDto[]> {
+    const [tree, featured] = await Promise.all([
+      this.tree(true),
+      CategoryModel.find({
+        level: CATEGORY_LEVEL.ROOT,
+        isActive: true,
+        isFeatured: true,
+      })
+        .sort({ featuredOrder: 1, name: 1 })
+        .lean(),
+    ]);
+
+    const counts = new Map<string, number>();
+    const collectCounts = (node: CategoryTreeNode) => {
+      counts.set(node.id, node.productCount);
+      node.children.forEach(collectCounts);
+    };
+    tree.forEach(collectCounts);
+
+    return featured.map((item) => ({
+      ...toDto(item),
+      productCount: counts.get(String(item._id)) ?? 0,
+    }));
+  },
+
+  async setFeatured(id: string, isFeatured: boolean) {
+    const category = await findCategory(id);
+
+    if (isFeatured) {
+      await assertCanFeature(category);
+      const order = await countFeaturedRoots();
+      category.isFeatured = true;
+      category.featuredOrder = order;
+    } else {
+      category.isFeatured = false;
+      category.featuredOrder = 0;
+    }
+
+    await category.save();
+    return toDetail(category);
+  },
+
+  async updateFeaturedOrder(categoryIds: string[]) {
+    if (categoryIds.length > MAX_FEATURED_CATEGORIES) {
+      throw AppError.validation(`At most ${MAX_FEATURED_CATEGORIES} categories can be featured`);
+    }
+
+    const unique = new Set(categoryIds);
+
+    if (unique.size !== categoryIds.length) {
+      throw AppError.validation('Each category can only appear once');
+    }
+
+    const categories = await CategoryModel.find({
+      _id: { $in: categoryIds },
+      level: CATEGORY_LEVEL.ROOT,
+      isActive: true,
+      isFeatured: true,
+    }).select('_id');
+
+    if (categories.length !== categoryIds.length) {
+      throw AppError.validation('Featured order must include only active featured root categories');
+    }
+
+    await Promise.all(
+      categoryIds.map((categoryId, index) =>
+        CategoryModel.updateOne({ _id: categoryId }, { $set: { featuredOrder: index } }),
+      ),
+    );
+
+    return this.listFeatured();
   },
 };

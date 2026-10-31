@@ -11,3 +11,5 @@ export const CATEGORY_LEVELS = [
 ] as const;
 
 export const MAX_CATEGORY_LEVEL = CATEGORY_LEVEL.SUB_SUB;
+
+export const MAX_FEATURED_CATEGORIES = 8;
