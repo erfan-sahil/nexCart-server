@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
-import { asyncHandler } from '../../utils/asyncHandler';
-import { sendSuccess } from '../../utils/sendResponse';
+import { asyncHandler } from '../../common/http/asyncHandler';
+import { sendSuccess } from '../../common/http/sendResponse';
 import { siteSettingsService } from './site-settings.service';
 import type { UpdateSiteSettingsInput } from './site-settings.validator';
 

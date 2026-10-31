@@ -1,11 +1,11 @@
 import { Types } from 'mongoose';
 
-import type { UserRole } from '../../types/auth';
-import { ProductReportModel } from '../../models/product-report.model';
-import { ProductModel } from '../../models/product.model';
-import { StoreModel } from '../../models/store.model';
-import { AppError } from '../../utils/AppError';
-import { isDuplicateKeyError } from '../../utils/mongoError';
+import type { UserRole } from '../auth/types';
+import { ProductReportModel } from './product-report.model';
+import { ProductModel } from '../products/product.model';
+import { StoreModel } from '../stores/store.model';
+import { AppError } from '../../common/errors/AppError';
+import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import { mapProductReport, mapProductReports } from './product-report.mapper';
 import type {
   CreateProductReportInput,

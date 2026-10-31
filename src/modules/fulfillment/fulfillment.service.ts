@@ -1,14 +1,11 @@
 import { Types, type FilterQuery } from 'mongoose';
-import { OrderModel, type Order } from '../../models/order.model';
-import { ShipmentModel } from '../../models/shipment.model';
-import { StoreModel } from '../../models/store.model';
-import {
-  VendorFulfillmentModel,
-  type VendorFulfillment,
-} from '../../models/vendorFulfillment.model';
-import { catalogStatsService } from '../../services/catalogStats.service';
-import { AppError } from '../../utils/AppError';
-import { isDuplicateKeyError } from '../../utils/mongoError';
+import { OrderModel, type Order } from '../orders/order.model';
+import { ShipmentModel } from './shipment.model';
+import { StoreModel } from '../stores/store.model';
+import { VendorFulfillmentModel, type VendorFulfillment } from './vendor-fulfillment.model';
+import { catalogStatsService } from '../catalog/catalog-stats.service';
+import { AppError } from '../../common/errors/AppError';
+import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import type { ListVendorFulfillmentsQuery } from './fulfillment.validator';
 import {
   groupOrderItemsByStore,

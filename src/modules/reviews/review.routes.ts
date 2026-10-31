@@ -1,8 +1,8 @@
 import { Router } from 'express';
 
-import { requirePermissions } from '../../middleware/authorize';
-import { authenticate, authenticateOptional } from '../../middleware/authenticate';
-import { validate } from '../../middleware/validate';
+import { requirePermissions } from '../../common/middleware/authorize';
+import { authenticate, authenticateOptional } from '../../common/middleware/authenticate';
+import { validate } from '../../common/middleware/validate';
 import { reviewController, reviewPermissions } from './review.controller';
 import {
   createReplySchema,

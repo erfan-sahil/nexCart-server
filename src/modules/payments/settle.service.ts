@@ -1,8 +1,8 @@
 import type { Types } from 'mongoose';
-import { OrderModel, type Order } from '../../models/order.model';
-import { PaymentAttemptModel } from '../../models/paymentAttempt.model';
-import type { PaymentAttempt } from '../../models/paymentAttempt.model';
-import { AppError } from '../../utils/AppError';
+import { OrderModel, type Order } from '../orders/order.model';
+import { PaymentAttemptModel } from './payment-attempt.model';
+import type { PaymentAttempt } from './payment-attempt.model';
+import { AppError } from '../../common/errors/AppError';
 import { toOrderDto } from '../orders/order.mapper';
 import { releaseExpiredOrderHolds } from '../orders/stock';
 import { fulfillmentService } from '../fulfillment/fulfillment.service';

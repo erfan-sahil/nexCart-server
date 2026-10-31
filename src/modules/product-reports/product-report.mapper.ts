@@ -1,9 +1,9 @@
 import type { Types } from 'mongoose';
 
-import type { ProductReport } from '../../models/product-report.model';
-import { ProductModel } from '../../models/product.model';
-import { StoreModel } from '../../models/store.model';
-import { UserModel } from '../../models/user.model';
+import type { ProductReport } from './product-report.model';
+import { ProductModel } from '../products/product.model';
+import { StoreModel } from '../stores/store.model';
+import { UserModel } from '../users/user.model';
 import type { ProductReportDto } from './types';
 
 type ReportLean = Pick<

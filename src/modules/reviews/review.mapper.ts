@@ -1,7 +1,7 @@
 import type { Types } from 'mongoose';
 
-import { UserModel } from '../../models/user.model';
-import type { Review } from '../../models/review.model';
+import { UserModel } from '../users/user.model';
+import type { Review } from './review.model';
 import type {
   ProductReviewDto,
   RatingDistributionDto,

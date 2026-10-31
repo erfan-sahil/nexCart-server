@@ -1,11 +1,11 @@
 import { Types } from 'mongoose';
 
-import type { Review } from '../../models/review.model';
-import { ProductModel } from '../../models/product.model';
-import { ReviewModel } from '../../models/review.model';
-import { StoreModel } from '../../models/store.model';
-import { AppError } from '../../utils/AppError';
-import { isDuplicateKeyError } from '../../utils/mongoError';
+import type { Review } from './review.model';
+import { ProductModel } from '../products/product.model';
+import { ReviewModel } from './review.model';
+import { StoreModel } from '../stores/store.model';
+import { AppError } from '../../common/errors/AppError';
+import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import { INITIAL_REPLIES_PER_REVIEW } from './constants';
 import { emptyDistribution, mapReplies, mapReviewTree, toReviewSummary } from './review.mapper';
 import type {

@@ -1,5 +1,5 @@
 import { env } from '../../config/env';
-import { SiteSettingsModel } from '../../models/siteSettings.model';
+import { SiteSettingsModel } from './site-settings.model';
 import { ORDER_CURRENCY } from '../orders/constants';
 import { SITE_SETTINGS_KEY } from './constants';
 import type { SiteSettingsDto } from './types';

@@ -4,14 +4,14 @@ import bcrypt from 'bcryptjs';
 import type { Types } from 'mongoose';
 
 import { connectDatabase, disconnectDatabase } from '../config/database';
-import { CategoryModel } from '../models/category.model';
-import { ProductModel } from '../models/product.model';
-import { ProductVariantModel } from '../models/productVariant.model';
-import { StoreModel, listedStoreFilter } from '../models/store.model';
-import { UserModel } from '../models/user.model';
-import { variantService } from '../services/variant.service';
-import { variantOptionKey } from '../services/variantAttributes';
-import { logger } from '../utils/logger';
+import { CategoryModel } from '../modules/categories/category.model';
+import { ProductModel } from '../modules/products/product.model';
+import { ProductVariantModel } from '../modules/products/product-variant.model';
+import { StoreModel, listedStoreFilter } from '../modules/stores/store.model';
+import { UserModel } from '../modules/users/user.model';
+import { variantService } from '../modules/products/variant.service';
+import { variantOptionKey } from '../modules/products/variant-attributes';
+import { logger } from '../common/utils/logger';
 import { productSeed, type ProductSeed } from './productSeed';
 
 const DEMO_EMAIL = 'catalog@nexcart.local';

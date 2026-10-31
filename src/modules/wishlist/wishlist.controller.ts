@@ -1,8 +1,8 @@
 import type { Request, Response } from 'express';
-import { Permission } from '../../constants/permissions';
-import { asyncHandler } from '../../utils/asyncHandler';
-import { AppError } from '../../utils/AppError';
-import { sendCreated, sendNoContent, sendSuccess } from '../../utils/sendResponse';
+import { Permission } from '../../common/constants/permissions';
+import { asyncHandler } from '../../common/http/asyncHandler';
+import { AppError } from '../../common/errors/AppError';
+import { sendCreated, sendNoContent, sendSuccess } from '../../common/http/sendResponse';
 import { wishlistService } from './wishlist.service';
 import type { AddWishlistInput } from './wishlist.validator';
 

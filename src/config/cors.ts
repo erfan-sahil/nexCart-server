@@ -1,6 +1,6 @@
 import type { CorsOptions } from 'cors';
 import { env } from './env';
-import { AppError } from '../utils/AppError';
+import { AppError } from '../common/errors/AppError';
 
 export const corsOptions: CorsOptions = {
   credentials: true,
