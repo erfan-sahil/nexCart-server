@@ -24,6 +24,12 @@ const checkoutBodySchema = z.object({
   items: z.array(orderLineSchema).min(1).max(MAX_ORDER_LINES),
   shipping: shippingSchema,
   note: z.string().trim().max(500).optional(),
+  couponCode: z
+    .string()
+    .trim()
+    .max(32)
+    .transform((value) => value.toUpperCase())
+    .optional(),
 });
 
 export const quoteOrderSchema = checkoutBodySchema;

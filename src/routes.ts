@@ -3,6 +3,7 @@ import { attributeRouter } from './modules/attributes';
 import { authRouter } from './modules/auth';
 import { catalogRouter } from './modules/catalog';
 import { categoryRouter } from './modules/categories';
+import { couponRouter } from './modules/coupons';
 import { flashDealRouter } from './modules/flash-deals';
 import {
   adminFulfillmentRouter,
@@ -35,6 +36,7 @@ apiRouter.use('/vendor-applications', vendorApplicationRouter);
 apiRouter.use('/stores', storeRouter);
 apiRouter.use('/attributes', attributeRouter);
 apiRouter.use('/categories', categoryRouter);
+apiRouter.use('/coupons', couponRouter);
 apiRouter.use('/flash-deals', flashDealRouter);
 apiRouter.use('/sponsored-placements', sponsoredPlacementRouter);
 apiRouter.use('/catalog', catalogRouter);

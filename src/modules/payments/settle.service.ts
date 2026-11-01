@@ -35,7 +35,7 @@ const paymentTotalsForOrder = (order: Order) => {
 
   return {
     amountPaid: order.deliveryFee,
-    balanceDue: order.itemsSubtotal,
+    balanceDue: order.balanceDue,
     paymentStatus: 'partially_paid' as const,
   };
 };
@@ -66,7 +66,7 @@ export const confirmOrderWithNothingDue = async (order: Order): Promise<OrderDto
         }
       : {
           amountPaid: 0,
-          balanceDue: order.itemsSubtotal,
+          balanceDue: order.balanceDue,
           paymentStatus: 'unpaid' as OrderPaymentStatus,
           codCollectionStatus: 'pending' as CodCollectionStatus,
         };
