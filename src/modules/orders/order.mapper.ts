@@ -38,6 +38,8 @@ export const toOrderDto = (order: Order): OrderDto => ({
   })),
   totals: {
     itemsSubtotal: order.itemsSubtotal,
+    couponCode: order.couponCode ?? null,
+    couponDiscount: order.couponDiscount ?? 0,
     deliveryFee: order.deliveryFee,
     grandTotal: order.grandTotal,
     amountDueNow: order.amountDueNow,

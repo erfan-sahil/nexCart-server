@@ -26,6 +26,5 @@ export type SponsoredPlacementManageDto = {
   title: string;
   subtitle: string;
   ctaLabel: string;
-  image: string;
   isActive: boolean;
 };

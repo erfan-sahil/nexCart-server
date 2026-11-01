@@ -5,6 +5,7 @@ import { ProductVariantModel } from '../products/product-variant.model';
 import { syncListing } from '../products/variant.service';
 import { AppError } from '../../common/errors/AppError';
 import type { ResolvedLine } from './pricing';
+import { couponService } from '../coupons/coupon.service';
 
 type Reservation = {
   variantId: Types.ObjectId;
@@ -67,7 +68,7 @@ export const releaseExpiredOrderHolds = async () => {
     status: 'awaiting_payment',
     stockReleasedAt: null,
     stockHoldExpiresAt: { $lte: now },
-  }).select('_id stockReservations');
+  }).select('_id stockReservations couponId');
 
   for (const order of expiredOrders) {
     const released = await OrderModel.findOneAndUpdate(
@@ -97,6 +98,10 @@ export const releaseExpiredOrderHolds = async () => {
 
     if (reservations.length > 0) {
       await releaseReservations(reservations);
+    }
+
+    if (released.couponId) {
+      await couponService.releaseUse(released.couponId);
     }
   }
 };

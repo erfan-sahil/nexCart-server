@@ -15,6 +15,7 @@ import type { OrderItemDto, OrderQuoteDto, OrderTotalsDto } from './types';
 import { AppError } from '../../common/errors/AppError';
 import { flashDealService } from '../flash-deals/flash-deal.service';
 import { resolveCheckoutUnitPrice } from '../flash-deals/flash-deal-pricing';
+import { couponService } from '../coupons/coupon.service';
 
 export type CheckoutLineInput = {
   variantId: string;
@@ -39,20 +40,25 @@ export const buildOrderNumber = () => {
 export const buildTotals = async (
   paymentMethod: OrderPaymentMethod,
   itemsSubtotal: number,
+  coupon: { couponCode: string | null; couponDiscount: number },
 ): Promise<OrderTotalsDto> => {
   const settings = await siteSettingsService.get();
   const deliveryFee = deliveryFeeFor(itemsSubtotal, settings);
   const subtotal = money(itemsSubtotal);
-  const grandTotal = money(subtotal + deliveryFee);
+  const couponDiscount = money(Math.min(coupon.couponDiscount, subtotal));
+  const discountedSubtotal = money(subtotal - couponDiscount);
+  const grandTotal = money(discountedSubtotal + deliveryFee);
   const amountDueNow = paymentMethod === 'prepaid' ? grandTotal : deliveryFee;
 
   return {
     itemsSubtotal: subtotal,
+    couponCode: coupon.couponCode,
+    couponDiscount,
     deliveryFee,
     grandTotal,
     amountDueNow,
     amountPaid: 0,
-    balanceDue: paymentMethod === 'prepaid' ? 0 : subtotal,
+    balanceDue: paymentMethod === 'prepaid' ? 0 : discountedSubtotal,
     refundableAmount: 0,
     currency: env.ORDER_CURRENCY || ORDER_CURRENCY,
   };
@@ -166,16 +172,26 @@ export const resolveCheckoutLines = async (lines: CheckoutLineInput[]): Promise<
 export const quoteCheckout = async (input: {
   paymentMethod: OrderPaymentMethod;
   items: CheckoutLineInput[];
+  couponCode?: string;
+  customerId?: string;
 }): Promise<OrderQuoteDto> => {
   const resolved = await resolveCheckoutLines(input.items);
   const itemsSubtotal = money(resolved.reduce((sum, line) => sum + line.lineTotal, 0));
+  const applied = await couponService.resolveForCheckout({
+    couponCode: input.couponCode,
+    itemsSubtotal,
+    customerId: input.customerId,
+  });
+  const coupon = applied
+    ? { couponCode: applied.couponCode, couponDiscount: applied.couponDiscount }
+    : { couponCode: null, couponDiscount: 0 };
 
   return {
     paymentMethod: input.paymentMethod,
     items: resolved.map(
       ({ productObjectId: _p, variantObjectId: _v, storeObjectId: _s, ...item }) => item,
     ),
-    totals: await buildTotals(input.paymentMethod, itemsSubtotal),
+    totals: await buildTotals(input.paymentMethod, itemsSubtotal, coupon),
   };
 };
 

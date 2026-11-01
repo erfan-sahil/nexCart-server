@@ -2,18 +2,35 @@ import type { FLASH_DEAL_DISCOUNT_TYPES } from './constants';
 
 export type FlashDealDiscountType = (typeof FLASH_DEAL_DISCOUNT_TYPES)[number];
 
-export type FlashDealDto = {
+export type FlashDealItemDto = {
   id: string;
+  campaignId: string;
   productId: string;
   productName: string;
   productSlug: string;
   storeName: string;
   discountType: FlashDealDiscountType;
   discountValue: number;
-  startsAt: string;
-  endsAt: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type FlashDealLifecycle = 'active' | 'upcoming' | 'ended';
+
+export type FlashDealCampaignDto = {
+  id: string;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+  isEnabled: boolean;
+  lifecycle: FlashDealLifecycle;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FlashDealCampaignDetailDto = FlashDealCampaignDto & {
+  items: FlashDealItemDto[];
 };
 
 export type FlashDealSettingsDto = {

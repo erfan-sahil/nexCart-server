@@ -37,12 +37,6 @@ const sponsoredPlacementSchema = new Schema(
       maxlength: 40,
       default: '',
     },
-    image: {
-      type: String,
-      trim: true,
-      maxlength: 2048,
-      default: '',
-    },
     isActive: {
       type: Boolean,
       required: true,

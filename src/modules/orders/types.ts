@@ -30,6 +30,8 @@ export type OrderItemDto = {
 
 export type OrderTotalsDto = {
   itemsSubtotal: number;
+  couponCode: string | null;
+  couponDiscount: number;
   deliveryFee: number;
   grandTotal: number;
   amountDueNow: number;

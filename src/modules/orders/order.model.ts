@@ -93,6 +93,9 @@ const orderSchema = new Schema(
     items: { type: [orderItemSchema], required: true },
     stockReservations: { type: [stockReservationSchema], default: [] },
     itemsSubtotal: { type: Number, required: true, min: 0 },
+    couponId: { type: Schema.Types.ObjectId, ref: 'Coupon', default: null },
+    couponCode: { type: String, trim: true, uppercase: true, maxlength: 32, default: null },
+    couponDiscount: { type: Number, required: true, default: 0, min: 0 },
     deliveryFee: { type: Number, required: true, min: 0 },
     grandTotal: { type: Number, required: true, min: 0 },
     amountDueNow: { type: Number, required: true, min: 0 },
@@ -116,6 +119,7 @@ const orderSchema = new Schema(
 );
 
 orderSchema.index({ customerId: 1, createdAt: -1 });
+orderSchema.index({ customerId: 1, couponId: 1, status: 1 });
 orderSchema.index({ customerId: 1, idempotencyKey: 1 }, { unique: true });
 orderSchema.index({ status: 1, stockHoldExpiresAt: 1, stockReleasedAt: 1 });
 

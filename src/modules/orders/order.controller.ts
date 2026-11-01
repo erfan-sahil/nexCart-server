@@ -22,7 +22,7 @@ const actorId = (req: Request) => {
 
 const quote = asyncHandler(async (req: Request, res: Response) => {
   const body = req.body as QuoteOrderInput;
-  const data = await orderService.quote(body);
+  const data = await orderService.quote(body, actorId(req));
 
   sendSuccess(res, data, { message: 'Checkout quote' });
 });

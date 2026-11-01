@@ -9,6 +9,7 @@ import { runIdempotent } from '../../common/utils/idempotency';
 import { IdempotencyScope } from './constants';
 import { assertOrderOwner, customerObjectId, toOrderDto, toOrderTrackingDto } from './order.mapper';
 import { buildOrderNumber, buildTotals, quoteCheckout, resolveCheckoutLines } from './pricing';
+import { couponService } from '../coupons/coupon.service';
 import {
   releaseExpiredOrderHolds,
   releaseReservations,
@@ -32,12 +33,14 @@ type Actor = {
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 export const orderService = {
-  async quote(input: QuoteOrderInput): Promise<OrderQuoteDto> {
+  async quote(input: QuoteOrderInput, customerId: string): Promise<OrderQuoteDto> {
     await releaseExpiredOrderHolds();
 
     return quoteCheckout({
       paymentMethod: input.paymentMethod,
       items: input.items,
+      couponCode: input.couponCode,
+      customerId,
     });
   },
 
@@ -52,7 +55,24 @@ export const orderService = {
       handler: async () => {
         const resolved = await resolveCheckoutLines(input.items);
         const itemsSubtotal = money(resolved.reduce((sum, line) => sum + line.lineTotal, 0));
-        const totals = await buildTotals(input.paymentMethod, itemsSubtotal);
+        const applied = await couponService.resolveForCheckout({
+          couponCode: input.couponCode,
+          itemsSubtotal,
+          customerId: actor.customerId,
+        });
+
+        let consumedCouponId: string | null = null;
+
+        if (applied) {
+          await couponService.consumeUse(applied.couponId);
+          consumedCouponId = applied.couponId;
+        }
+
+        const couponTotals = applied
+          ? { couponCode: applied.couponCode, couponDiscount: applied.couponDiscount }
+          : { couponCode: null, couponDiscount: 0 };
+
+        const totals = await buildTotals(input.paymentMethod, itemsSubtotal, couponTotals);
         const reservations = await reserveStock(resolved);
 
         try {
@@ -94,6 +114,9 @@ export const orderService = {
               productId: row.productId,
               quantity: row.quantity,
             })),
+            couponId: applied ? new Types.ObjectId(applied.couponId) : null,
+            couponCode: applied?.couponCode ?? null,
+            couponDiscount: totals.couponDiscount,
             itemsSubtotal: totals.itemsSubtotal,
             deliveryFee: totals.deliveryFee,
             grandTotal: totals.grandTotal,
@@ -112,6 +135,10 @@ export const orderService = {
           return { statusCode: 201, body: dto };
         } catch (error) {
           await releaseReservations(reservations);
+
+          if (consumedCouponId) {
+            await couponService.releaseUse(new Types.ObjectId(consumedCouponId));
+          }
 
           if (isDuplicateKeyError(error)) {
             const existing = await OrderModel.findOne({
