@@ -4,6 +4,7 @@ import { asyncHandler } from '../../common/http/asyncHandler';
 import { sendPaginated, sendSuccess } from '../../common/http/sendResponse';
 import { AppError } from '../../common/errors/AppError';
 import { vendorOrderService } from './vendor-order.service';
+import { codService } from './cod.service';
 import type { ListAdminOrdersQuery } from './vendor-order.validator';
 
 const adminUserId = (req: Request) => {
@@ -39,10 +40,36 @@ const cancel = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, data, { message: 'Order cancelled' });
 });
 
+const codCollect = asyncHandler(async (req: Request, res: Response) => {
+  const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.orderId;
+  const body = req.body as { amountCollected: number; courierReference?: string };
+  const data = await codService.recordCollection(orderId ?? '', body);
+
+  sendSuccess(res, data, { message: 'COD collection recorded' });
+});
+
+const codRemit = asyncHandler(async (req: Request, res: Response) => {
+  const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.orderId;
+  const body = req.body as { remittedAmount: number };
+  const data = await codService.recordRemittance(orderId ?? '', body);
+
+  sendSuccess(res, data, { message: 'COD remittance recorded' });
+});
+
+const codReconcile = asyncHandler(async (req: Request, res: Response) => {
+  const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.orderId;
+  const data = await codService.reconcile(orderId ?? '');
+
+  sendSuccess(res, data, { message: 'COD remittance reconciled' });
+});
+
 export const adminOrderController = {
   list,
   getById,
   cancel,
+  codCollect,
+  codRemit,
+  codReconcile,
 };
 
 export const adminOrderPermissions = {

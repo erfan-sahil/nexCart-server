@@ -6,6 +6,7 @@ import { VendorFulfillmentModel, type VendorFulfillment } from './vendor-fulfill
 import { VendorOrderModel } from '../orders/vendor-order.model';
 import { orderActivityService } from '../orders/order-activity.service';
 import { rollupParentFulfillmentStatus } from '../orders/order-rollup.service';
+import { codService } from '../orders/cod.service';
 import { catalogStatsService } from '../catalog/catalog-stats.service';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
@@ -577,6 +578,8 @@ export const fulfillmentService = {
 
     if (order.paymentMethod === 'cod' && order.balanceDue > 0) {
       order.codCollectionStatus = 'pending';
+      order.codExpectedAmount = money(order.balanceDue);
+      order.codRemittanceStatus = 'expected';
     }
 
     await order.save();
@@ -616,40 +619,20 @@ export const fulfillmentService = {
       throw AppError.validation('Cash collection applies only to cash-on-delivery orders');
     }
 
-    if (order.status !== 'delivered') {
-      throw AppError.validation('Collect cash only after the order is delivered');
-    }
-
-    if (order.codCollectionStatus === 'collected' || order.balanceDue <= 0) {
-      throw AppError.validation('There is no outstanding balance to collect');
-    }
-
-    const expected = money(order.balanceDue);
+    const expected = money(order.codExpectedAmount ?? order.balanceDue);
     const collected = input.amountCollected === undefined ? expected : money(input.amountCollected);
 
-    if (collected !== expected) {
-      throw AppError.validation(
-        `Collected amount must equal the outstanding balance (${expected})`,
-      );
-    }
-
-    order.amountPaid = money(order.amountPaid + collected);
-    order.balanceDue = 0;
-    order.paymentStatus = 'paid';
-    order.codCollectionStatus = 'collected';
-
-    if (input.note) {
-      order.note = order.note ? `${order.note}\n${input.note}` : input.note;
-    }
-
-    await order.save();
+    const result = await codService.recordCollection(orderId, {
+      amountCollected: collected,
+      courierReference: input.note,
+    });
 
     return {
-      orderId: String(order._id),
+      orderId: result.orderId,
       amountPaid: order.amountPaid,
       balanceDue: order.balanceDue,
       paymentStatus: order.paymentStatus,
-      codCollectionStatus: order.codCollectionStatus,
+      codCollectionStatus: 'collected',
     };
   },
 

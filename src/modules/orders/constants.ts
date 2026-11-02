@@ -54,6 +54,15 @@ export const ORDER_PAYMENT_STATUSES = ['unpaid', 'partially_paid', 'paid'] as co
 
 export const COD_COLLECTION_STATUSES = ['not_applicable', 'pending', 'collected'] as const;
 
+export const COD_REMITTANCE_STATUSES = [
+  'not_applicable',
+  'expected',
+  'collected',
+  'remitted',
+  'reconciled',
+  'short',
+] as const;
+
 export const ORDER_CURRENCY = 'BDT';
 
 export const MAX_ORDER_LINE_QUANTITY = 99;
@@ -75,6 +84,7 @@ export type OrderPaymentMethod = (typeof ORDER_PAYMENT_METHODS)[number];
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export type OrderPaymentStatus = (typeof ORDER_PAYMENT_STATUSES)[number];
 export type CodCollectionStatus = (typeof COD_COLLECTION_STATUSES)[number];
+export type CodRemittanceStatus = (typeof COD_REMITTANCE_STATUSES)[number];
 export type OrderFulfillmentStatus = (typeof ORDER_FULFILLMENT_STATUSES)[number];
 export type VendorOrderStatus = (typeof VENDOR_ORDER_STATUSES)[number];
 export type StockCustody = (typeof STOCK_CUSTODIES)[number];

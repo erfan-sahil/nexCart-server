@@ -18,6 +18,13 @@ import {
   adminOrderManagementRouter,
   vendorOrderRouter,
 } from './modules/orders/vendor-order.routes';
+import { adminCommissionRouter, vendorWalletRouter } from './modules/wallet/wallet.routes';
+import {
+  adminWithdrawalRouter,
+  vendorWithdrawalRouter,
+} from './modules/withdrawals/withdrawal.routes';
+import { adminReturnRouter, vendorReturnRouter } from './modules/returns/return.routes';
+import { adminFinanceReportRouter } from './modules/reports/finance-report.routes';
 import { sslcommerzRouter } from './modules/payments';
 import { productReportInboxRouter, productReportOnProductRouter } from './modules/product-reports';
 import { productRouter } from './modules/products';
@@ -59,3 +66,10 @@ apiRouter.use('/vendor/fulfillments', vendorFulfillmentRouter);
 apiRouter.use('/admin/fulfillments', adminFulfillmentRouter);
 apiRouter.use('/admin/orders', adminOrderManagementRouter);
 apiRouter.use('/admin/orders', adminOrderFulfillmentRouter);
+apiRouter.use('/vendor/wallet', vendorWalletRouter);
+apiRouter.use('/admin/commission', adminCommissionRouter);
+apiRouter.use('/vendor/withdrawals', vendorWithdrawalRouter);
+apiRouter.use('/admin/withdrawals', adminWithdrawalRouter);
+apiRouter.use('/vendor/returns', vendorReturnRouter);
+apiRouter.use('/admin/returns', adminReturnRouter);
+apiRouter.use('/admin/finance/reports', adminFinanceReportRouter);

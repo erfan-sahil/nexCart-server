@@ -64,6 +64,9 @@ const vendorOrderSchema = new Schema(
       required: true,
       min: 0,
     },
+    commissionRate: { type: Number, min: 0, max: 100, default: null },
+    commissionAmount: { type: Number, min: 0, default: null },
+    vendorEarnings: { type: Number, min: 0, default: null },
   },
   {
     timestamps: true,

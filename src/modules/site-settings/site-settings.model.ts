@@ -15,6 +15,20 @@ const siteSettingsSchema = new Schema(
       min: 0,
       max: MAX_DELIVERY_FEE,
     },
+    defaultCommissionRate: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100,
+      default: 10,
+    },
+    settlementHoldDays: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 90,
+      default: 7,
+    },
     freeDeliveryEnabled: {
       type: Boolean,
       required: true,

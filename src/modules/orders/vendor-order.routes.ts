@@ -9,6 +9,8 @@ import {
   listVendorOrdersQuerySchema,
   vendorOrderIdParamsSchema,
   dispatchInboundSchema,
+  codCollectionSchema,
+  codRemittanceSchema,
 } from './vendor-order.validator';
 
 export const vendorOrderRouter = Router();
@@ -89,4 +91,25 @@ adminOrderManagementRouter.post(
   ...requirePermissions(adminOrderPermissions.cancel),
   validate({ params: adminOrderIdParamsSchema }),
   adminOrderController.cancel,
+);
+
+adminOrderManagementRouter.post(
+  '/:orderId/cod/collect',
+  ...requirePermissions(adminOrderPermissions.read),
+  validate({ params: adminOrderIdParamsSchema, body: codCollectionSchema }),
+  adminOrderController.codCollect,
+);
+
+adminOrderManagementRouter.post(
+  '/:orderId/cod/remit',
+  ...requirePermissions(adminOrderPermissions.read),
+  validate({ params: adminOrderIdParamsSchema, body: codRemittanceSchema }),
+  adminOrderController.codRemit,
+);
+
+adminOrderManagementRouter.post(
+  '/:orderId/cod/reconcile',
+  ...requirePermissions(adminOrderPermissions.read),
+  validate({ params: adminOrderIdParamsSchema }),
+  adminOrderController.codReconcile,
 );

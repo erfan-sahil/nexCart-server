@@ -30,5 +30,14 @@ export const dispatchInboundSchema = z.object({
   inboundTracking: z.string().trim().min(1).max(80),
 });
 
+export const codCollectionSchema = z.object({
+  amountCollected: z.number().min(0),
+  courierReference: z.string().max(120).optional(),
+});
+
+export const codRemittanceSchema = z.object({
+  remittedAmount: z.number().min(0),
+});
+
 export type ListVendorOrdersQuery = z.infer<typeof listVendorOrdersQuerySchema>;
 export type ListAdminOrdersQuery = z.infer<typeof listAdminOrdersQuerySchema>;

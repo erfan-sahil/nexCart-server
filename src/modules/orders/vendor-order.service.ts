@@ -1,6 +1,7 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
+import { walletService } from '../wallet/wallet.service';
 import { groupOrderItemsByStore } from '../fulfillment/fulfillment.mapper';
 import { VendorFulfillmentModel } from '../fulfillment/vendor-fulfillment.model';
 import { StoreModel } from '../stores/store.model';
@@ -124,7 +125,7 @@ export const vendorOrderService = {
       index += 1;
 
       try {
-        await VendorOrderModel.create({
+        const created = await VendorOrderModel.create({
           parentOrderId: order._id,
           orderNumber: order.orderNumber,
           vendorOrderNumber: `${order.orderNumber}-S${index}`,
@@ -143,6 +144,7 @@ export const vendorOrderService = {
             lineTotal: item.lineTotal,
           })),
         });
+        await walletService.applyCommissionSnapshot(created._id);
       } catch (error) {
         if (!isDuplicateKeyError(error)) {
           throw error;
