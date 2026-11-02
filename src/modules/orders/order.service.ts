@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { OrderModel } from './order.model';
 import { ProductModel } from '../products/product.model';
 import { ShipmentModel } from '../fulfillment/shipment.model';
+import { VendorFulfillmentModel } from '../fulfillment/vendor-fulfillment.model';
 import { UserModel } from '../users/user.model';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
@@ -16,6 +17,7 @@ import {
   reserveStock,
   stockHoldExpiresAt,
 } from './stock';
+import { recordStockMovement } from './stock-movement.service';
 import type { OrderDto, OrderQuoteDto, OrderTrackingDto } from './types';
 import type {
   CreateOrderInput,
@@ -82,6 +84,7 @@ export const orderService = {
             idempotencyKey,
             paymentMethod: input.paymentMethod,
             status: 'awaiting_payment',
+            fulfillmentStatus: 'placed',
             paymentStatus: 'unpaid',
             codCollectionStatus: 'not_applicable',
             shipping: input.shipping,
@@ -129,6 +132,19 @@ export const orderService = {
             stockReleasedAt: null,
             saleRecordedAt: null,
           });
+
+          for (const reservation of reservations) {
+            await recordStockMovement({
+              orderId: order._id,
+              variantId: reservation.variantId,
+              productId: reservation.productId,
+              quantity: reservation.quantity,
+              direction: 'decrement',
+              custody: 'at_vendor',
+              reason: 'checkout_reserve',
+              idempotencyKey: `order:${String(order._id)}:reserve:${String(reservation.variantId)}`,
+            });
+          }
 
           const dto = toOrderDto(order);
 
@@ -209,8 +225,9 @@ export const orderService = {
       throw AppError.notFound(TRACK_MISS);
     }
 
-    const [shipment, products] = await Promise.all([
+    const [shipment, fulfillments, products] = await Promise.all([
       ShipmentModel.findOne({ orderId: order._id }),
+      VendorFulfillmentModel.find({ orderId: order._id }),
       ProductModel.find({
         _id: { $in: [...new Set(order.items.map((item) => item.productId))] },
       }).select('slug images thumbnailId'),
@@ -219,6 +236,7 @@ export const orderService = {
     return toOrderTrackingDto(
       order,
       shipment,
+      fulfillments,
       new Map(products.map((product) => [String(product._id), product])),
     );
   },

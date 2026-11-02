@@ -1,8 +1,10 @@
 import { Schema, model, type InferSchemaType, type Types } from 'mongoose';
 import {
   COD_COLLECTION_STATUSES,
+  COD_REMITTANCE_STATUSES,
   ORDER_CURRENCY,
   ORDER_PAYMENT_METHODS,
+  ORDER_FULFILLMENT_STATUSES,
   ORDER_PAYMENT_STATUSES,
   ORDER_STATUSES,
 } from './constants';
@@ -76,6 +78,12 @@ const orderSchema = new Schema(
       enum: ORDER_STATUSES,
       default: 'awaiting_payment',
     },
+    fulfillmentStatus: {
+      type: String,
+      required: true,
+      enum: ORDER_FULFILLMENT_STATUSES,
+      default: 'placed',
+    },
     paymentStatus: {
       type: String,
       required: true,
@@ -88,6 +96,16 @@ const orderSchema = new Schema(
       enum: COD_COLLECTION_STATUSES,
       default: 'not_applicable',
     },
+    codExpectedAmount: { type: Number, min: 0, default: null },
+    codCollectedAmount: { type: Number, min: 0, default: null },
+    codCourierReference: { type: String, trim: true, maxlength: 120, default: '' },
+    codRemittanceStatus: {
+      type: String,
+      required: true,
+      enum: COD_REMITTANCE_STATUSES,
+      default: 'not_applicable',
+    },
+    codRemittedAmount: { type: Number, min: 0, default: null },
     shipping: { type: shippingSchema, required: true },
     note: { type: String, trim: true, maxlength: 500, default: '' },
     items: { type: [orderItemSchema], required: true },

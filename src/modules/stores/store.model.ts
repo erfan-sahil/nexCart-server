@@ -57,6 +57,7 @@ const storeSchema = new Schema(
     totalProducts: { type: Number, required: true, default: 0, min: 0 },
     totalOrders: { type: Number, required: true, default: 0, min: 0 },
     totalSales: { type: Number, required: true, default: 0, min: 0 },
+    commissionRate: { type: Number, min: 0, max: 100, default: null },
     returnPolicy: { type: String, trim: true, maxlength: 2000, default: '' },
     shippingPolicy: { type: String, trim: true, maxlength: 2000, default: '' },
     isActive: { type: Boolean, required: true, default: true },

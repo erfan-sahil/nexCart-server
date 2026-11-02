@@ -2,8 +2,11 @@ import { Types } from 'mongoose';
 import type { Order } from './order.model';
 import type { Product } from '../products/product.model';
 import type { Shipment } from '../fulfillment/shipment.model';
+import type { VendorFulfillment } from '../fulfillment/vendor-fulfillment.model';
 import { AppError } from '../../common/errors/AppError';
 import type { OrderDto, OrderShippingDto, OrderTrackingDto } from './types';
+import { projectCustomerStatus } from './order-status';
+import { projectCustomerTimeline } from './order-timeline';
 
 const toShippingDto = (shipping: Order['shipping']): OrderShippingDto => ({
   recipientName: shipping.recipientName,
@@ -20,7 +23,7 @@ export const toOrderDto = (order: Order): OrderDto => ({
   id: String(order._id),
   orderNumber: order.orderNumber,
   paymentMethod: order.paymentMethod,
-  status: order.status,
+  status: projectCustomerStatus(order),
   paymentStatus: order.paymentStatus,
   codCollectionStatus: order.codCollectionStatus,
   shipping: toShippingDto(order.shipping),
@@ -68,10 +71,11 @@ const productImageUrl = (product: Pick<Product, 'thumbnailId' | 'images'> | unde
 export const toOrderTrackingDto = (
   order: Order,
   shipment: Shipment | null,
+  fulfillments: VendorFulfillment[],
   products: Map<string, Pick<Product, 'slug' | 'thumbnailId' | 'images'>>,
 ): OrderTrackingDto => ({
   orderNumber: order.orderNumber,
-  status: order.status,
+  status: projectCustomerStatus(order),
   paymentMethod: order.paymentMethod,
   paymentStatus: order.paymentStatus,
   placedAt: order.createdAt.toISOString(),
@@ -90,6 +94,7 @@ export const toOrderTrackingDto = (
   shippedAt: iso(shipment?.shippedAt),
   deliveredAt: iso(shipment?.deliveredAt),
   fulfillmentStartedAt: iso(shipment?.createdAt),
+  timeline: projectCustomerTimeline({ order, shipment, fulfillments }),
   grandTotal: order.grandTotal,
   currency: order.currency,
   items: order.items.map((item) => {

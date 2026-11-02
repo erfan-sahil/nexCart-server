@@ -3,9 +3,14 @@ import { OrderModel, type Order } from '../orders/order.model';
 import { ShipmentModel } from './shipment.model';
 import { StoreModel } from '../stores/store.model';
 import { VendorFulfillmentModel, type VendorFulfillment } from './vendor-fulfillment.model';
+import { VendorOrderModel } from '../orders/vendor-order.model';
+import { orderActivityService } from '../orders/order-activity.service';
+import { rollupParentFulfillmentStatus } from '../orders/order-rollup.service';
+import { codService } from '../orders/cod.service';
 import { catalogStatsService } from '../catalog/catalog-stats.service';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
+import type { FulfillmentRejectionReason } from './constants';
 import type { ListVendorFulfillmentsQuery } from './fulfillment.validator';
 import {
   groupOrderItemsByStore,
@@ -68,7 +73,7 @@ const allFulfillmentsReadyToPack = async (orderId: Types.ObjectId) => {
     return false;
   }
 
-  return rows.every((row) => row.status === 'inspected' && !row.hasDiscrepancy);
+  return rows.every((row) => row.status === 'accepted');
 };
 
 const recordOrderSales = async (order: Order) => {
@@ -120,16 +125,22 @@ export const fulfillmentService = {
       await ShipmentModel.create({
         orderId: order._id,
         orderNumber: order.orderNumber,
-        status: 'awaiting_items',
+        status: 'pending',
       });
 
       for (const group of groups) {
+        const vendorOrder = await VendorOrderModel.findOne({
+          parentOrderId: order._id,
+          storeId: new Types.ObjectId(group.storeId),
+        }).select('_id');
+
         await VendorFulfillmentModel.create({
           orderId: order._id,
           orderNumber: order.orderNumber,
           storeId: new Types.ObjectId(group.storeId),
           storeName: group.storeName,
           vendorUserId: new Types.ObjectId(group.vendorUserId),
+          vendorOrderId: vendorOrder?._id ?? null,
           status: 'pending',
           itemsSubtotal: money(group.itemsSubtotal),
           items: group.items.map((item) => ({
@@ -186,6 +197,40 @@ export const fulfillmentService = {
     return toVendorFulfillmentDto(row);
   },
 
+  async listForAdmin(query: {
+    page: number;
+    limit: number;
+    status?: VendorFulfillment['status'];
+    orderNumber?: string;
+  }) {
+    const filter: FilterQuery<VendorFulfillment> = {};
+
+    if (query.status) {
+      filter.status = query.status;
+    }
+
+    if (query.orderNumber) {
+      filter.orderNumber = new RegExp(
+        query.orderNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+        'i',
+      );
+    }
+
+    const skip = (query.page - 1) * query.limit;
+
+    const [rows, total] = await Promise.all([
+      VendorFulfillmentModel.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(query.limit),
+      VendorFulfillmentModel.countDocuments(filter),
+    ]);
+
+    return {
+      items: rows.map(toVendorFulfillmentDto),
+      page: query.page,
+      limit: query.limit,
+      total,
+    };
+  },
+
   async dispatch(
     vendorUserId: string,
     fulfillmentId: string,
@@ -201,13 +246,67 @@ export const fulfillmentService = {
       throw AppError.validation('This fulfillment was already dispatched');
     }
 
-    row.status = 'dispatched';
-    row.inboundCarrier = input.inboundCarrier;
-    row.inboundTracking = input.inboundTracking;
-    row.dispatchedAt = new Date();
-    await row.save();
+    if (!row.vendorOrderId) {
+      throw AppError.validation('Vendor order link is missing for this fulfillment');
+    }
 
-    return toVendorFulfillmentDto(row);
+    const vendorOrder = await VendorOrderModel.findOneAndUpdate(
+      {
+        _id: row.vendorOrderId,
+        vendorUserId: new Types.ObjectId(vendorUserId),
+        status: 'ready_to_ship',
+      },
+      { $set: { status: 'in_transit' } },
+      { new: true },
+    );
+
+    if (!vendorOrder) {
+      throw AppError.validation('Mark the vendor order ready to ship before dispatching inbound');
+    }
+
+    const updated = await VendorFulfillmentModel.findOneAndUpdate(
+      { _id: row._id, status: 'pending' },
+      {
+        $set: {
+          status: 'dispatched',
+          inboundCarrier: input.inboundCarrier,
+          inboundTracking: input.inboundTracking,
+          dispatchedAt: new Date(),
+        },
+      },
+      { new: true },
+    );
+
+    if (!updated) {
+      throw AppError.validation('Inbound shipment could not be dispatched');
+    }
+
+    await orderActivityService.log({
+      parentOrderId: row.orderId,
+      vendorOrderId: row.vendorOrderId,
+      actorUserId: vendorUserId,
+      actorRole: 'vendor',
+      action: 'inbound_dispatched',
+    });
+
+    return toVendorFulfillmentDto(updated);
+  },
+
+  async markInboundInTransit(vendorUserId: string, fulfillmentId: string) {
+    const row = await loadFulfillment(fulfillmentId);
+    assertVendorOwnsFulfillment(row, vendorUserId);
+
+    const updated = await VendorFulfillmentModel.findOneAndUpdate(
+      { _id: row._id, status: 'dispatched' },
+      { $set: { status: 'in_transit' } },
+      { new: true },
+    );
+
+    if (!updated) {
+      throw AppError.validation('Inbound shipment must be dispatched first');
+    }
+
+    return toVendorFulfillmentDto(updated);
   },
 
   async receive(
@@ -219,8 +318,8 @@ export const fulfillmentService = {
   ) {
     const row = await loadFulfillment(fulfillmentId);
 
-    if (row.status !== 'dispatched') {
-      throw AppError.validation('Fulfillment must be dispatched before it can be received');
+    if (row.status !== 'dispatched' && row.status !== 'in_transit') {
+      throw AppError.validation('Fulfillment must be in transit before it can be received');
     }
 
     const quantities = new Map(input.items.map((item) => [item.variantId, item.quantity]));
@@ -247,24 +346,54 @@ export const fulfillmentService = {
     row.markModified('items');
     await row.save();
 
+    await orderActivityService.log({
+      parentOrderId: row.orderId,
+      vendorOrderId: row.vendorOrderId,
+      actorUserId: _adminId,
+      actorRole: 'admin',
+      action: 'inbound_received',
+    });
+
     return toVendorFulfillmentDto(row);
+  },
+
+  async startInspect(_adminId: string, fulfillmentId: string) {
+    const updated = await VendorFulfillmentModel.findOneAndUpdate(
+      { _id: fulfillmentId, status: 'received' },
+      { $set: { status: 'inspecting' } },
+      { new: true },
+    );
+
+    if (!updated) {
+      throw AppError.validation('Fulfillment must be received before inspection starts');
+    }
+
+    return toVendorFulfillmentDto(updated);
   },
 
   async inspect(
     _adminId: string,
     fulfillmentId: string,
     input: {
-      items: { variantId: string; quantityAccepted: number; quantityRejected: number }[];
+      items: {
+        variantId: string;
+        quantityAccepted: number;
+        quantityRejected: number;
+        rejectionReason?: string;
+        rejectionNote?: string;
+      }[];
     },
   ) {
     const row = await loadFulfillment(fulfillmentId);
 
-    if (row.status !== 'received') {
+    if (row.status !== 'received' && row.status !== 'inspecting') {
       throw AppError.validation('Fulfillment must be received before inspection');
     }
 
     const byVariant = new Map(input.items.map((item) => [item.variantId, item]));
     let hasDiscrepancy = false;
+    let allAccepted = true;
+    let allRejected = true;
 
     for (const line of row.items) {
       const variantId = String(line.variantId);
@@ -282,19 +411,65 @@ export const fulfillmentService = {
         );
       }
 
+      const shortfall = line.quantityOrdered - line.quantityReceived;
+      const needsReason =
+        inspected.quantityRejected > 0 ||
+        shortfall > 0 ||
+        inspected.quantityAccepted < line.quantityOrdered;
+
+      if (needsReason && !inspected.rejectionReason) {
+        throw AppError.validation(`Rejection reason is required for ${line.sku}`);
+      }
+
       line.quantityAccepted = inspected.quantityAccepted;
       line.quantityRejected = inspected.quantityRejected;
+      line.rejectionReason =
+        (inspected.rejectionReason as FulfillmentRejectionReason | undefined) ?? null;
+      line.rejectionNote = inspected.rejectionNote ?? '';
 
-      if (inspected.quantityAccepted !== line.quantityOrdered || inspected.quantityRejected > 0) {
+      if (inspected.quantityAccepted !== line.quantityOrdered) {
         hasDiscrepancy = true;
+        allAccepted = false;
+      }
+
+      if (inspected.quantityAccepted > 0) {
+        allRejected = false;
       }
     }
 
-    row.status = 'inspected';
+    let nextStatus: VendorFulfillment['status'] = 'accepted';
+    let vendorOrderStatus: 'received' | 'partially_received' | 'exception' = 'received';
+
+    if (allRejected) {
+      nextStatus = 'rejected';
+      vendorOrderStatus = 'exception';
+    } else if (!allAccepted || hasDiscrepancy) {
+      nextStatus = 'partially_accepted';
+      vendorOrderStatus = 'partially_received';
+    }
+
+    row.status = nextStatus;
     row.hasDiscrepancy = hasDiscrepancy;
     row.inspectedAt = new Date();
     row.markModified('items');
     await row.save();
+
+    if (row.vendorOrderId) {
+      await VendorOrderModel.updateOne(
+        { _id: row.vendorOrderId, status: 'in_transit' },
+        { $set: { status: vendorOrderStatus } },
+      );
+    }
+
+    await orderActivityService.log({
+      parentOrderId: row.orderId,
+      vendorOrderId: row.vendorOrderId,
+      actorUserId: _adminId,
+      actorRole: 'admin',
+      action: 'inbound_inspected',
+    });
+
+    await rollupParentFulfillmentStatus(row.orderId);
 
     return toVendorFulfillmentDto(row);
   },
@@ -305,9 +480,7 @@ export const fulfillmentService = {
     const ready = await allFulfillmentsReadyToPack(new Types.ObjectId(orderId));
 
     if (!ready) {
-      throw AppError.validation(
-        'Every vendor shipment must be inspected with no discrepancies before packing',
-      );
+      throw AppError.validation('Every vendor shipment must be fully accepted before packing');
     }
 
     const shipment = await ShipmentModel.findOne({ orderId });
@@ -316,13 +489,15 @@ export const fulfillmentService = {
       throw AppError.notFound('Shipment not found');
     }
 
-    if (shipment.status !== 'awaiting_items') {
-      throw AppError.validation('Shipment is not awaiting warehouse items');
+    if (shipment.status !== 'pending' && shipment.status !== 'awaiting_items') {
+      throw AppError.validation('Shipment is not ready to pack');
     }
 
-    shipment.status = 'ready_to_pack';
+    shipment.status = 'packed';
     shipment.packedAt = new Date();
     await shipment.save();
+
+    await rollupParentFulfillmentStatus(orderId);
 
     return toShipmentDto(shipment);
   },
@@ -334,42 +509,66 @@ export const fulfillmentService = {
   ) {
     const order = await requireConfirmedOrder(orderId);
 
-    if (order.status !== 'confirmed') {
-      throw AppError.validation('Order must be confirmed before it can ship');
-    }
-
     const shipment = await ShipmentModel.findOne({ orderId: order._id });
 
-    if (!shipment || shipment.status !== 'ready_to_pack') {
+    if (!shipment || (shipment.status !== 'packed' && shipment.status !== 'ready_to_pack')) {
       throw AppError.validation('Shipment must be packed before dispatch to the customer');
     }
 
-    shipment.status = 'shipped';
+    shipment.status = 'dispatched';
     shipment.carrier = input.carrier;
     shipment.trackingNumber = input.trackingNumber;
     shipment.shippedAt = new Date();
     await shipment.save();
 
-    order.status = 'shipped';
-    await order.save();
+    await rollupParentFulfillmentStatus(order._id);
 
     return {
       orderId: String(order._id),
-      orderStatus: order.status,
+      orderStatus: 'shipped',
       shipment: toShipmentDto(shipment),
     };
   },
 
-  async deliverOrder(_adminId: string, orderId: string) {
+  async advanceShipment(
+    _adminId: string,
+    orderId: string,
+    nextStatus: 'in_transit' | 'out_for_delivery' | 'delivery_failed' | 'returned_to_warehouse',
+  ) {
     const order = await requireConfirmedOrder(orderId);
-
-    if (order.status !== 'shipped') {
-      throw AppError.validation('Order must be shipped before it can be marked delivered');
-    }
-
     const shipment = await ShipmentModel.findOne({ orderId: order._id });
 
-    if (!shipment || shipment.status !== 'shipped') {
+    if (!shipment) {
+      throw AppError.notFound('Shipment not found');
+    }
+
+    const allowed: Record<string, string[]> = {
+      dispatched: ['in_transit'],
+      in_transit: ['out_for_delivery', 'delivery_failed'],
+      out_for_delivery: ['delivered', 'delivery_failed', 'returned_to_warehouse'],
+    };
+
+    const options = allowed[shipment.status];
+
+    if (!options?.includes(nextStatus)) {
+      throw AppError.validation('Invalid shipment status transition');
+    }
+
+    shipment.status = nextStatus;
+    await shipment.save();
+    await rollupParentFulfillmentStatus(order._id);
+
+    return { orderId: String(order._id), shipment: toShipmentDto(shipment) };
+  },
+
+  async deliverOrder(_adminId: string, orderId: string) {
+    const order = await requireConfirmedOrder(orderId);
+    const shipment = await ShipmentModel.findOne({ orderId: order._id });
+
+    if (
+      !shipment ||
+      !['dispatched', 'in_transit', 'out_for_delivery', 'shipped'].includes(shipment.status)
+    ) {
       throw AppError.validation('Shipment must be in transit before delivery');
     }
 
@@ -377,14 +576,27 @@ export const fulfillmentService = {
     shipment.deliveredAt = new Date();
     await shipment.save();
 
-    order.status = 'delivered';
-
     if (order.paymentMethod === 'cod' && order.balanceDue > 0) {
       order.codCollectionStatus = 'pending';
+      order.codExpectedAmount = money(order.balanceDue);
+      order.codRemittanceStatus = 'expected';
     }
 
     await order.save();
+    await rollupParentFulfillmentStatus(order._id);
     await recordOrderSales(order);
+
+    const vendorOrders = await VendorOrderModel.find({
+      parentOrderId: order._id,
+      status: 'received',
+    }).select('_id');
+
+    if (vendorOrders.length > 0) {
+      await VendorOrderModel.updateMany(
+        { _id: { $in: vendorOrders.map((row) => row._id) } },
+        { $set: { status: 'completed' } },
+      );
+    }
 
     const refreshed = await OrderModel.findById(order._id);
 
@@ -407,40 +619,20 @@ export const fulfillmentService = {
       throw AppError.validation('Cash collection applies only to cash-on-delivery orders');
     }
 
-    if (order.status !== 'delivered') {
-      throw AppError.validation('Collect cash only after the order is delivered');
-    }
-
-    if (order.codCollectionStatus === 'collected' || order.balanceDue <= 0) {
-      throw AppError.validation('There is no outstanding balance to collect');
-    }
-
-    const expected = money(order.balanceDue);
+    const expected = money(order.codExpectedAmount ?? order.balanceDue);
     const collected = input.amountCollected === undefined ? expected : money(input.amountCollected);
 
-    if (collected !== expected) {
-      throw AppError.validation(
-        `Collected amount must equal the outstanding balance (${expected})`,
-      );
-    }
-
-    order.amountPaid = money(order.amountPaid + collected);
-    order.balanceDue = 0;
-    order.paymentStatus = 'paid';
-    order.codCollectionStatus = 'collected';
-
-    if (input.note) {
-      order.note = order.note ? `${order.note}\n${input.note}` : input.note;
-    }
-
-    await order.save();
+    const result = await codService.recordCollection(orderId, {
+      amountCollected: collected,
+      courierReference: input.note,
+    });
 
     return {
-      orderId: String(order._id),
+      orderId: result.orderId,
       amountPaid: order.amountPaid,
       balanceDue: order.balanceDue,
       paymentStatus: order.paymentStatus,
-      codCollectionStatus: order.codCollectionStatus,
+      codCollectionStatus: 'collected',
     };
   },
 

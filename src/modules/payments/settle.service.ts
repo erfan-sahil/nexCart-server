@@ -5,7 +5,7 @@ import type { PaymentAttempt } from './payment-attempt.model';
 import { AppError } from '../../common/errors/AppError';
 import { toOrderDto } from '../orders/order.mapper';
 import { releaseExpiredOrderHolds } from '../orders/stock';
-import { fulfillmentService } from '../fulfillment/fulfillment.service';
+import { confirmOrderPipeline } from '../orders/vendor-order.service';
 import type { CodCollectionStatus, OrderPaymentStatus } from '../orders/constants';
 import type { OrderDto } from '../orders/types';
 import { SSLCOMMERZ_SUCCESS_STATUSES } from './constants';
@@ -78,7 +78,7 @@ export const confirmOrderWithNothingDue = async (order: Order): Promise<OrderDto
       stockReleasedAt: null,
       stockHoldExpiresAt: { $gt: now },
     },
-    { $set: { status: 'confirmed', ...totals } },
+    { $set: { status: 'confirmed', fulfillmentStatus: 'confirmed', ...totals } },
     { new: true },
   );
 
@@ -92,7 +92,7 @@ export const confirmOrderWithNothingDue = async (order: Order): Promise<OrderDto
     throw AppError.validation('This order can no longer be confirmed');
   }
 
-  await fulfillmentService.bootstrapForOrder(confirmed._id);
+  await confirmOrderPipeline(confirmed._id);
 
   return toOrderDto(confirmed);
 };
@@ -207,6 +207,7 @@ export const settlePayment = async (input: SettleInput): Promise<OrderDto | null
     {
       $set: {
         status: 'confirmed',
+        fulfillmentStatus: 'confirmed',
         amountPaid: totals.amountPaid,
         balanceDue: totals.balanceDue,
         paymentStatus: totals.paymentStatus,
@@ -235,7 +236,7 @@ export const settlePayment = async (input: SettleInput): Promise<OrderDto | null
     gatewayPayload: input.gatewayPayload,
   });
 
-  await fulfillmentService.bootstrapForOrder(confirmed._id);
+  await confirmOrderPipeline(confirmed._id);
 
   return toOrderDto(confirmed);
 };

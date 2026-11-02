@@ -7,6 +7,7 @@ import { fulfillmentService } from './fulfillment.service';
 import type {
   DispatchFulfillmentInput,
   InspectFulfillmentInput,
+  ListAdminFulfillmentsQuery,
   ListVendorFulfillmentsQuery,
   ReceiveFulfillmentInput,
   ShipOrderInput,
@@ -76,6 +77,26 @@ const inspect = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, data, { message: 'Inspection recorded' });
 });
 
+const listAdmin = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query as unknown as ListAdminFulfillmentsQuery;
+  const result = await fulfillmentService.listForAdmin(query);
+
+  sendPaginated(res, result.items, {
+    page: result.page,
+    limit: result.limit,
+    total: result.total,
+  });
+});
+
+const startInspect = asyncHandler(async (req: Request, res: Response) => {
+  const data = await fulfillmentService.startInspect(
+    actorId(req),
+    routeParam(req.params.fulfillmentId),
+  );
+
+  sendSuccess(res, data, { message: 'Inspection started' });
+});
+
 const getAdminFulfillment = asyncHandler(async (req: Request, res: Response) => {
   const data = await fulfillmentService.getForAdmin(routeParam(req.params.fulfillmentId));
 
@@ -124,9 +145,11 @@ const getOrderFulfillment = asyncHandler(async (req: Request, res: Response) => 
 
 export const fulfillmentController = {
   listVendor,
+  listAdmin,
   getVendor,
   dispatch,
   receive,
+  startInspect,
   inspect,
   getAdminFulfillment,
   packShipment,

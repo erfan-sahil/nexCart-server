@@ -6,6 +6,7 @@ import { syncListing } from '../products/variant.service';
 import { AppError } from '../../common/errors/AppError';
 import type { ResolvedLine } from './pricing';
 import { couponService } from '../coupons/coupon.service';
+import { restoreStockWithMovement } from './stock-movement.service';
 
 type Reservation = {
   variantId: Types.ObjectId;
@@ -97,7 +98,16 @@ export const releaseExpiredOrderHolds = async () => {
     }));
 
     if (reservations.length > 0) {
-      await releaseReservations(reservations);
+      for (const reservation of reservations) {
+        await restoreStockWithMovement({
+          orderId: released._id,
+          variantId: reservation.variantId,
+          productId: reservation.productId,
+          quantity: reservation.quantity,
+          idempotencyKey: `order:${String(released._id)}:expire:${String(reservation.variantId)}`,
+          reason: 'hold_expired',
+        });
+      }
     }
 
     if (released.couponId) {
