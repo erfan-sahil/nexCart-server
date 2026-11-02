@@ -2,9 +2,11 @@ import { Types } from 'mongoose';
 import type { Order } from './order.model';
 import type { Product } from '../products/product.model';
 import type { Shipment } from '../fulfillment/shipment.model';
+import type { VendorFulfillment } from '../fulfillment/vendor-fulfillment.model';
 import { AppError } from '../../common/errors/AppError';
 import type { OrderDto, OrderShippingDto, OrderTrackingDto } from './types';
 import { projectCustomerStatus } from './order-status';
+import { projectCustomerTimeline } from './order-timeline';
 
 const toShippingDto = (shipping: Order['shipping']): OrderShippingDto => ({
   recipientName: shipping.recipientName,
@@ -69,6 +71,7 @@ const productImageUrl = (product: Pick<Product, 'thumbnailId' | 'images'> | unde
 export const toOrderTrackingDto = (
   order: Order,
   shipment: Shipment | null,
+  fulfillments: VendorFulfillment[],
   products: Map<string, Pick<Product, 'slug' | 'thumbnailId' | 'images'>>,
 ): OrderTrackingDto => ({
   orderNumber: order.orderNumber,
@@ -91,6 +94,7 @@ export const toOrderTrackingDto = (
   shippedAt: iso(shipment?.shippedAt),
   deliveredAt: iso(shipment?.deliveredAt),
   fulfillmentStartedAt: iso(shipment?.createdAt),
+  timeline: projectCustomerTimeline({ order, shipment, fulfillments }),
   grandTotal: order.grandTotal,
   currency: order.currency,
   items: order.items.map((item) => {

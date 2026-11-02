@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { OrderModel } from './order.model';
 import { ProductModel } from '../products/product.model';
 import { ShipmentModel } from '../fulfillment/shipment.model';
+import { VendorFulfillmentModel } from '../fulfillment/vendor-fulfillment.model';
 import { UserModel } from '../users/user.model';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
@@ -224,8 +225,9 @@ export const orderService = {
       throw AppError.notFound(TRACK_MISS);
     }
 
-    const [shipment, products] = await Promise.all([
+    const [shipment, fulfillments, products] = await Promise.all([
       ShipmentModel.findOne({ orderId: order._id }),
+      VendorFulfillmentModel.find({ orderId: order._id }),
       ProductModel.find({
         _id: { $in: [...new Set(order.items.map((item) => item.productId))] },
       }).select('slug images thumbnailId'),
@@ -234,6 +236,7 @@ export const orderService = {
     return toOrderTrackingDto(
       order,
       shipment,
+      fulfillments,
       new Map(products.map((product) => [String(product._id), product])),
     );
   },

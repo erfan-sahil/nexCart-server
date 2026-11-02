@@ -4,6 +4,7 @@ import type {
   OrderPaymentStatus,
   OrderStatus,
 } from './constants';
+import type { CustomerTimelineStep } from './order-timeline';
 
 export type OrderShippingDto = {
   recipientName: string;
@@ -84,6 +85,7 @@ export type OrderTrackingDto = {
   shippedAt: string | null;
   deliveredAt: string | null;
   fulfillmentStartedAt: string | null;
+  timeline: CustomerTimelineStep[];
   grandTotal: number;
   currency: string;
   items: OrderTrackingItemDto[];

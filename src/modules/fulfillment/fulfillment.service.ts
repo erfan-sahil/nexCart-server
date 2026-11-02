@@ -5,6 +5,7 @@ import { StoreModel } from '../stores/store.model';
 import { VendorFulfillmentModel, type VendorFulfillment } from './vendor-fulfillment.model';
 import { VendorOrderModel } from '../orders/vendor-order.model';
 import { orderActivityService } from '../orders/order-activity.service';
+import { rollupParentFulfillmentStatus } from '../orders/order-rollup.service';
 import { catalogStatsService } from '../catalog/catalog-stats.service';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
@@ -123,7 +124,7 @@ export const fulfillmentService = {
       await ShipmentModel.create({
         orderId: order._id,
         orderNumber: order.orderNumber,
-        status: 'awaiting_items',
+        status: 'pending',
       });
 
       for (const group of groups) {
@@ -467,6 +468,8 @@ export const fulfillmentService = {
       action: 'inbound_inspected',
     });
 
+    await rollupParentFulfillmentStatus(row.orderId);
+
     return toVendorFulfillmentDto(row);
   },
 
@@ -485,13 +488,15 @@ export const fulfillmentService = {
       throw AppError.notFound('Shipment not found');
     }
 
-    if (shipment.status !== 'awaiting_items') {
-      throw AppError.validation('Shipment is not awaiting warehouse items');
+    if (shipment.status !== 'pending' && shipment.status !== 'awaiting_items') {
+      throw AppError.validation('Shipment is not ready to pack');
     }
 
-    shipment.status = 'ready_to_pack';
+    shipment.status = 'packed';
     shipment.packedAt = new Date();
     await shipment.save();
+
+    await rollupParentFulfillmentStatus(orderId);
 
     return toShipmentDto(shipment);
   },
@@ -503,42 +508,66 @@ export const fulfillmentService = {
   ) {
     const order = await requireConfirmedOrder(orderId);
 
-    if (order.status !== 'confirmed') {
-      throw AppError.validation('Order must be confirmed before it can ship');
-    }
-
     const shipment = await ShipmentModel.findOne({ orderId: order._id });
 
-    if (!shipment || shipment.status !== 'ready_to_pack') {
+    if (!shipment || (shipment.status !== 'packed' && shipment.status !== 'ready_to_pack')) {
       throw AppError.validation('Shipment must be packed before dispatch to the customer');
     }
 
-    shipment.status = 'shipped';
+    shipment.status = 'dispatched';
     shipment.carrier = input.carrier;
     shipment.trackingNumber = input.trackingNumber;
     shipment.shippedAt = new Date();
     await shipment.save();
 
-    order.status = 'shipped';
-    await order.save();
+    await rollupParentFulfillmentStatus(order._id);
 
     return {
       orderId: String(order._id),
-      orderStatus: order.status,
+      orderStatus: 'shipped',
       shipment: toShipmentDto(shipment),
     };
   },
 
-  async deliverOrder(_adminId: string, orderId: string) {
+  async advanceShipment(
+    _adminId: string,
+    orderId: string,
+    nextStatus: 'in_transit' | 'out_for_delivery' | 'delivery_failed' | 'returned_to_warehouse',
+  ) {
     const order = await requireConfirmedOrder(orderId);
-
-    if (order.status !== 'shipped') {
-      throw AppError.validation('Order must be shipped before it can be marked delivered');
-    }
-
     const shipment = await ShipmentModel.findOne({ orderId: order._id });
 
-    if (!shipment || shipment.status !== 'shipped') {
+    if (!shipment) {
+      throw AppError.notFound('Shipment not found');
+    }
+
+    const allowed: Record<string, string[]> = {
+      dispatched: ['in_transit'],
+      in_transit: ['out_for_delivery', 'delivery_failed'],
+      out_for_delivery: ['delivered', 'delivery_failed', 'returned_to_warehouse'],
+    };
+
+    const options = allowed[shipment.status];
+
+    if (!options?.includes(nextStatus)) {
+      throw AppError.validation('Invalid shipment status transition');
+    }
+
+    shipment.status = nextStatus;
+    await shipment.save();
+    await rollupParentFulfillmentStatus(order._id);
+
+    return { orderId: String(order._id), shipment: toShipmentDto(shipment) };
+  },
+
+  async deliverOrder(_adminId: string, orderId: string) {
+    const order = await requireConfirmedOrder(orderId);
+    const shipment = await ShipmentModel.findOne({ orderId: order._id });
+
+    if (
+      !shipment ||
+      !['dispatched', 'in_transit', 'out_for_delivery', 'shipped'].includes(shipment.status)
+    ) {
       throw AppError.validation('Shipment must be in transit before delivery');
     }
 
@@ -546,14 +575,25 @@ export const fulfillmentService = {
     shipment.deliveredAt = new Date();
     await shipment.save();
 
-    order.status = 'delivered';
-
     if (order.paymentMethod === 'cod' && order.balanceDue > 0) {
       order.codCollectionStatus = 'pending';
     }
 
     await order.save();
+    await rollupParentFulfillmentStatus(order._id);
     await recordOrderSales(order);
+
+    const vendorOrders = await VendorOrderModel.find({
+      parentOrderId: order._id,
+      status: 'received',
+    }).select('_id');
+
+    if (vendorOrders.length > 0) {
+      await VendorOrderModel.updateMany(
+        { _id: { $in: vendorOrders.map((row) => row._id) } },
+        { $set: { status: 'completed' } },
+      );
+    }
 
     const refreshed = await OrderModel.findById(order._id);
 

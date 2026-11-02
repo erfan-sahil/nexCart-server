@@ -12,10 +12,17 @@ export const VENDOR_FULFILLMENT_STATUSES = [
 export const FULFILLMENT_REJECTION_REASONS = ['damaged', 'incorrect', 'missing', 'other'] as const;
 
 export const SHIPMENT_STATUSES = [
+  'pending',
+  'packed',
+  'dispatched',
+  'in_transit',
+  'out_for_delivery',
+  'delivered',
+  'delivery_failed',
+  'returned_to_warehouse',
   'awaiting_items',
   'ready_to_pack',
   'shipped',
-  'delivered',
 ] as const;
 
 export type FulfillmentRejectionReason = (typeof FULFILLMENT_REJECTION_REASONS)[number];

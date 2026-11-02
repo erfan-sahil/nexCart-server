@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { appState } from './config/appState';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { migrateFulfillmentRecords } from './modules/fulfillment/fulfillment.migrate';
+import { migrateShipmentStatuses } from './modules/fulfillment/shipment.migrate';
 import { env } from './config/env';
 import { ensureUploadDir } from './infrastructure/storage/imageStorage';
 import { logger } from './common/utils/logger';
@@ -12,6 +13,7 @@ const host = '0.0.0.0';
 const start = async () => {
   await connectDatabase();
   await migrateFulfillmentRecords();
+  await migrateShipmentStatuses();
   await ensureUploadDir();
   appState.isReady = true;
 
