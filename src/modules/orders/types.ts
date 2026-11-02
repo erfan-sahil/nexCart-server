@@ -1,9 +1,13 @@
 import type {
   CodCollectionStatus,
+  CustomerOrderStatus,
   OrderPaymentMethod,
   OrderPaymentStatus,
   OrderStatus,
 } from './constants';
+
+/** Status shown on customer/admin lists when warehouse steps are projected away. */
+export type OrderCustomerFacingStatus = OrderStatus | CustomerOrderStatus;
 import type { CustomerTimelineStep } from './order-timeline';
 
 export type OrderShippingDto = {
@@ -46,7 +50,7 @@ export type OrderDto = {
   id: string;
   orderNumber: string;
   paymentMethod: OrderPaymentMethod;
-  status: OrderStatus;
+  status: OrderCustomerFacingStatus;
   paymentStatus: OrderPaymentStatus;
   codCollectionStatus: CodCollectionStatus;
   shipping: OrderShippingDto;
@@ -74,7 +78,7 @@ export type OrderTrackingItemDto = {
 
 export type OrderTrackingDto = {
   orderNumber: string;
-  status: OrderStatus;
+  status: OrderCustomerFacingStatus;
   paymentMethod: OrderPaymentMethod;
   paymentStatus: OrderPaymentStatus;
   placedAt: string;

@@ -2,6 +2,7 @@ import type { OrderActivity } from './order-activity.model';
 import type { Order } from './order.model';
 import type { VendorOrder } from './vendor-order.model';
 import { defaultFulfillmentStatus, projectCustomerStatus } from './order-status';
+import { projectCustomerStatusWithVendorOrders } from './customer-order-status.service';
 import { toOrderDto } from './order.mapper';
 import type {
   AdminOrderDetailDto,
@@ -25,6 +26,9 @@ export const toVendorOrderDto = (row: VendorOrder): VendorOrderDto => ({
     productName: item.productName,
     sku: item.sku,
     quantity: item.quantity,
+    expectedQty: item.expectedQty ?? item.quantity,
+    targetQty: item.targetQty ?? item.quantity,
+    acceptedQtyCumulative: item.acceptedQtyCumulative ?? 0,
     unitPrice: item.unitPrice,
     lineTotal: item.lineTotal,
   })),
@@ -73,36 +77,49 @@ export const toAdminOrderDetail = (
   order: Order,
   vendorOrders: VendorOrder[],
   activity: OrderActivityDto[],
-): AdminOrderDetailDto => ({
-  ...toAdminOrderListItem(order),
-  vendorOrderCount: vendorOrders.length,
-  shipping: {
-    recipientName: order.shipping.recipientName,
-    phone: order.shipping.phone,
-    line1: order.shipping.line1,
-    line2: order.shipping.line2 ?? '',
-    city: order.shipping.city,
-    state: order.shipping.state,
-    postalCode: order.shipping.postalCode,
-    country: order.shipping.country,
-  },
-  payment: {
-    amountPaid: order.amountPaid,
-    balanceDue: order.balanceDue,
-    codCollectionStatus: order.codCollectionStatus,
-  },
-  totals: toOrderDto(order).totals,
-  vendorOrders: vendorOrders.map(toVendorOrderDto),
-  activity,
-  canCancel: false,
-});
+  shipmentStatus?: string | null,
+): AdminOrderDetailDto => {
+  const customerStatus = projectCustomerStatusWithVendorOrders(order, vendorOrders, shipmentStatus);
+
+  return {
+    ...toAdminOrderListItem(order),
+    status: customerStatus,
+    vendorOrderCount: vendorOrders.length,
+    shipping: {
+      recipientName: order.shipping.recipientName,
+      phone: order.shipping.phone,
+      line1: order.shipping.line1,
+      line2: order.shipping.line2 ?? '',
+      city: order.shipping.city,
+      state: order.shipping.state,
+      postalCode: order.shipping.postalCode,
+      country: order.shipping.country,
+    },
+    payment: {
+      amountPaid: order.amountPaid,
+      balanceDue: order.balanceDue,
+      codCollectionStatus: order.codCollectionStatus,
+    },
+    totals: toOrderDto(order).totals,
+    vendorOrders: vendorOrders.map(toVendorOrderDto),
+    activity,
+    canCancel: false,
+  };
+};
 
 export const toVendorOrderSummary = (counts: Record<string, number>): VendorOrderSummaryDto => ({
   total: counts.total ?? 0,
   pending: counts.pending ?? 0,
   accepted: counts.accepted ?? 0,
   preparing: counts.preparing ?? 0,
-  readyToShip: counts.ready_to_ship ?? 0,
-  inTransit: counts.in_transit ?? 0,
-  completed: counts.completed ?? 0,
+  sendingToWarehouse: counts.sending_to_warehouse ?? 0,
+  receivedAtWarehouse: counts.received_at_warehouse ?? 0,
+  inspecting: counts.inspecting ?? 0,
+  acceptedAtWarehouse: counts.accepted_at_warehouse ?? 0,
+  partiallyAccepted: counts.partially_accepted ?? 0,
+  rejectedAtWarehouse: counts.rejected_at_warehouse ?? 0,
+  packed: counts.packed ?? 0,
+  shipped: counts.shipped ?? 0,
+  outForDelivery: counts.out_for_delivery ?? 0,
+  delivered: counts.delivered ?? 0,
 });

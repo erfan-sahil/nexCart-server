@@ -25,13 +25,42 @@ export const ORDER_FULFILLMENT_STATUSES = [
 export const VENDOR_ORDER_STATUSES = [
   'pending',
   'accepted',
+  'cancelled',
   'preparing',
-  'ready_to_ship',
-  'in_transit',
+  'sending_to_warehouse',
+  'received_at_warehouse',
+  'inspecting',
+  'accepted_at_warehouse',
+  'partially_accepted',
+  'rejected_at_warehouse',
+  'packed',
+  'shipped',
+  'out_for_delivery',
+  'delivered',
+] as const;
+
+export const INBOUND_BATCH_STATUSES = [
+  'dispatched',
   'received',
-  'partially_received',
-  'exception',
-  'completed',
+  'inspecting',
+  'inspected',
+] as const;
+
+export const REJECT_RETURN_STATUSES = [
+  'pending_return',
+  'in_transit_to_vendor',
+  'received_by_vendor',
+] as const;
+
+/** Customer-facing projected order status (API layer). */
+export const CUSTOMER_ORDER_STATUSES = [
+  'awaiting_payment',
+  'confirmed',
+  'product_accepted',
+  'shipped_to_warehouse',
+  'out_for_delivery',
+  'delivered',
+  'expired',
   'cancelled',
 ] as const;
 
@@ -78,6 +107,9 @@ export const IDEMPOTENCY_TTL_HOURS = 24;
 export const IdempotencyScope = {
   orderCreate: 'order.create',
   paymentInitiate: 'payment.initiate',
+  vendorOrderStatus: 'vendor.order.status',
+  adminVendorOrderStatus: 'admin.vendor_order.status',
+  adminOrderStatus: 'admin.order.status',
 } as const;
 
 export type OrderPaymentMethod = (typeof ORDER_PAYMENT_METHODS)[number];
@@ -87,5 +119,8 @@ export type CodCollectionStatus = (typeof COD_COLLECTION_STATUSES)[number];
 export type CodRemittanceStatus = (typeof COD_REMITTANCE_STATUSES)[number];
 export type OrderFulfillmentStatus = (typeof ORDER_FULFILLMENT_STATUSES)[number];
 export type VendorOrderStatus = (typeof VENDOR_ORDER_STATUSES)[number];
+export type InboundBatchStatus = (typeof INBOUND_BATCH_STATUSES)[number];
+export type RejectReturnStatus = (typeof REJECT_RETURN_STATUSES)[number];
+export type CustomerOrderStatus = (typeof CUSTOMER_ORDER_STATUSES)[number];
 export type StockCustody = (typeof STOCK_CUSTODIES)[number];
 export type StockMovementDirection = (typeof STOCK_MOVEMENT_DIRECTIONS)[number];

@@ -2,10 +2,14 @@ import type {
   OrderFulfillmentStatus,
   OrderPaymentMethod,
   OrderPaymentStatus,
-  OrderStatus,
   VendorOrderStatus,
 } from './constants';
-import type { OrderItemDto, OrderShippingDto, OrderTotalsDto } from './types';
+import type {
+  OrderCustomerFacingStatus,
+  OrderItemDto,
+  OrderShippingDto,
+  OrderTotalsDto,
+} from './types';
 import type { UserRole } from '../auth/types';
 
 export type VendorOrderDto = {
@@ -27,9 +31,16 @@ export type VendorOrderSummaryDto = {
   pending: number;
   accepted: number;
   preparing: number;
-  readyToShip: number;
-  inTransit: number;
-  completed: number;
+  sendingToWarehouse: number;
+  receivedAtWarehouse: number;
+  inspecting: number;
+  acceptedAtWarehouse: number;
+  partiallyAccepted: number;
+  rejectedAtWarehouse: number;
+  packed: number;
+  shipped: number;
+  outForDelivery: number;
+  delivered: number;
 };
 
 export type OrderActivityDto = {
@@ -46,7 +57,7 @@ export type OrderActivityDto = {
 export type AdminOrderListItemDto = {
   id: string;
   orderNumber: string;
-  status: OrderStatus;
+  status: OrderCustomerFacingStatus;
   fulfillmentStatus: OrderFulfillmentStatus;
   paymentStatus: OrderPaymentStatus;
   paymentMethod: OrderPaymentMethod;

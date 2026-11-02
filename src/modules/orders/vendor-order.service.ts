@@ -9,6 +9,18 @@ import type { UserRole } from '../auth/types';
 import { orderActivityService } from './order-activity.service';
 import { OrderModel, type Order } from './order.model';
 import { VendorOrderModel, type VendorOrder } from './vendor-order.model';
+import { InboundBatchModel } from './inbound-batch.model';
+import {
+  buildSentLinesFromVendorOrder,
+  createDispatchBatch,
+  listBatchesForVendorOrder,
+} from './inbound-batch.service';
+import {
+  assertResendAllowed,
+  listRejectReturnsForVendorOrder,
+  markAllInTransitReturnsReceivedByVendor,
+} from './reject-return.service';
+import { canVendorTransition } from './vendor-order-transitions';
 import { restoreStockWithMovement } from './stock-movement.service';
 import {
   toAdminOrderDetail,
@@ -21,6 +33,7 @@ import type {
   ListVendorOrdersQuery,
   UpdateVendorOrderStatusBody,
 } from './vendor-order.validator';
+import { ShipmentModel } from '../fulfillment/shipment.model';
 import { fulfillmentService } from '../fulfillment/fulfillment.service';
 import { toVendorFulfillmentDto } from '../fulfillment/fulfillment.mapper';
 
@@ -85,13 +98,9 @@ const rollupParentFulfillment = async (parentOrderId: Types.ObjectId) => {
 };
 
 const canCancelParentOrder = async (orderId: Types.ObjectId) => {
-  const inbound = await VendorFulfillmentModel.find({ orderId }).select('status');
+  const sent = await InboundBatchModel.exists({ parentOrderId: orderId });
 
-  if (inbound.length === 0) {
-    return true;
-  }
-
-  return inbound.every((row) => row.status === 'pending');
+  return !sent;
 };
 
 export const vendorOrderService = {
@@ -144,6 +153,9 @@ export const vendorOrderService = {
             productName: item.productName,
             sku: item.sku,
             quantity: item.quantity,
+            expectedQty: item.quantity,
+            targetQty: item.quantity,
+            acceptedQtyCumulative: 0,
             unitPrice: item.unitPrice,
             lineTotal: item.lineTotal,
           })),
@@ -208,37 +220,48 @@ export const vendorOrderService = {
 
   async getForVendor(vendorUserId: string, vendorOrderId: string) {
     const row = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
-    const fulfillment = await VendorFulfillmentModel.findOne({ vendorOrderId: row._id });
+    const [fulfillment, batches, rejectReturns] = await Promise.all([
+      VendorFulfillmentModel.findOne({ vendorOrderId: row._id }),
+      listBatchesForVendorOrder(row._id),
+      listRejectReturnsForVendorOrder(row._id),
+    ]);
+
     return {
       ...toVendorOrderDto(row),
       inbound: fulfillment ? toVendorFulfillmentDto(fulfillment) : null,
+      inboundBatches: batches.map((batch) => ({
+        id: String(batch._id),
+        sequence: batch.sequence,
+        status: batch.status,
+        lines: batch.lines.map((line) => ({
+          variantId: String(line.variantId),
+          sku: line.sku,
+          productName: line.productName,
+          sentQty: line.sentQty,
+          acceptedQty: line.acceptedQty,
+          rejectedQty: line.rejectedQty,
+          rejectionReason: line.rejectionReason,
+          rejectionNote: line.rejectionNote,
+        })),
+        dispatchedAt: batch.dispatchedAt.toISOString(),
+        receivedAt: batch.receivedAt?.toISOString() ?? null,
+        inspectedAt: batch.inspectedAt?.toISOString() ?? null,
+      })),
+      rejectReturns: rejectReturns.map((ret) => ({
+        id: String(ret._id),
+        inboundBatchId: String(ret.inboundBatchId),
+        status: ret.status,
+        lines: ret.lines.map((line) => ({
+          variantId: String(line.variantId),
+          sku: line.sku,
+          quantity: line.quantity,
+          rejectionReason: line.rejectionReason,
+          rejectionNote: line.rejectionNote,
+        })),
+        sentToVendorAt: ret.sentToVendorAt?.toISOString() ?? null,
+        receivedByVendorAt: ret.receivedByVendorAt?.toISOString() ?? null,
+      })),
     };
-  },
-
-  async dispatchInbound(
-    vendorUserId: string,
-    vendorOrderId: string,
-    input: { inboundCarrier: string; inboundTracking: string },
-  ) {
-    const row = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
-    const fulfillment = await VendorFulfillmentModel.findOne({ vendorOrderId: row._id });
-
-    if (!fulfillment) {
-      throw AppError.notFound('Inbound shipment not found');
-    }
-
-    return fulfillmentService.dispatch(vendorUserId, String(fulfillment._id), input);
-  },
-
-  async markInboundInTransit(vendorUserId: string, vendorOrderId: string) {
-    const row = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
-    const fulfillment = await VendorFulfillmentModel.findOne({ vendorOrderId: row._id });
-
-    if (!fulfillment) {
-      throw AppError.notFound('Inbound shipment not found');
-    }
-
-    return fulfillmentService.markInboundInTransit(vendorUserId, String(fulfillment._id));
   },
 
   async transitionVendorOrder(
@@ -281,24 +304,28 @@ export const vendorOrderService = {
     vendorOrderId: string,
     input: UpdateVendorOrderStatusBody,
   ) {
-    if (input.status === 'accepted') {
-      return this.transitionVendorOrder(
-        vendorUserId,
-        vendorOrderId,
-        'pending',
-        'accepted',
-        'vendor_order_accepted',
-      );
+    const row = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
+
+    if (input.status === 'received_returned_rejects') {
+      await markAllInTransitReturnsReceivedByVendor(row, vendorUserId);
+      return this.getForVendor(vendorUserId, vendorOrderId);
+    }
+
+    if (!canVendorTransition(row.status, input.status)) {
+      throw AppError.validation(`Vendor order cannot move from ${row.status} to ${input.status}`);
     }
 
     if (input.status === 'cancelled') {
-      const row = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
+      if (row.status !== 'pending') {
+        throw AppError.validation('Vendor can only cancel while order is pending');
+      }
+
       const updated = await this.transitionVendorOrder(
         vendorUserId,
         vendorOrderId,
         'pending',
         'cancelled',
-        'vendor_order_rejected',
+        'vendor_order_cancelled',
       );
 
       for (const item of row.items) {
@@ -307,40 +334,61 @@ export const vendorOrderService = {
           variantId: item.variantId,
           productId: item.productId,
           quantity: item.quantity,
-          idempotencyKey: `order:${String(row.parentOrderId)}:vendor-reject:${String(row._id)}:${item.sku}`,
-          reason: 'vendor_order_rejected',
+          idempotencyKey: `order:${String(row.parentOrderId)}:vendor-cancel:${String(row._id)}:${item.sku}`,
+          reason: 'vendor_order_cancelled',
         });
       }
+
+      await walletService.reversePendingEarnings(row._id);
 
       return updated;
     }
 
     if (input.status === 'preparing') {
+      if (row.status === 'partially_accepted' || row.status === 'rejected_at_warehouse') {
+        await assertResendAllowed(row._id);
+      }
+
       return this.transitionVendorOrder(
         vendorUserId,
         vendorOrderId,
-        'accepted',
+        row.status,
         'preparing',
         'vendor_order_preparing',
       );
     }
 
-    if (input.status === 'ready_to_ship') {
-      return this.transitionVendorOrder(
+    if (input.status === 'sending_to_warehouse') {
+      const updated = await this.transitionVendorOrder(
         vendorUserId,
         vendorOrderId,
         'preparing',
-        'ready_to_ship',
-        'vendor_order_ready_to_ship',
+        'sending_to_warehouse',
+        'vendor_order_sending_to_warehouse',
       );
+
+      const fresh = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
+      const sentLines = buildSentLinesFromVendorOrder(fresh);
+      await createDispatchBatch(fresh, sentLines);
+
+      const fulfillment = await VendorFulfillmentModel.findOne({ vendorOrderId: fresh._id });
+
+      if (fulfillment && fulfillment.status === 'pending') {
+        fulfillment.status = 'dispatched';
+        fulfillment.dispatchedAt = new Date();
+        await fulfillment.save();
+      }
+
+      return updated;
     }
 
-    await this.dispatchInbound(vendorUserId, vendorOrderId, {
-      inboundCarrier: input.inboundCarrier!,
-      inboundTracking: input.inboundTracking!,
-    });
-
-    return this.getForVendor(vendorUserId, vendorOrderId);
+    return this.transitionVendorOrder(
+      vendorUserId,
+      vendorOrderId,
+      row.status,
+      input.status,
+      `vendor_order_${input.status}`,
+    );
   },
 
   async listForAdmin(query: ListAdminOrdersQuery) {
@@ -397,12 +445,13 @@ export const vendorOrderService = {
       throw AppError.notFound('Order not found');
     }
 
-    const [vendorOrders, activityRows] = await Promise.all([
+    const [vendorOrders, activityRows, shipment] = await Promise.all([
       VendorOrderModel.find({ parentOrderId: order._id }).sort({ vendorOrderNumber: 1 }),
       orderActivityService.listForParent(orderId),
+      ShipmentModel.findOne({ orderId: order._id }).select('status'),
     ]);
 
-    const detail = toAdminOrderDetail(order, vendorOrders, activityRows);
+    const detail = toAdminOrderDetail(order, vendorOrders, activityRows, shipment?.status ?? null);
     detail.canCancel =
       order.status === 'confirmed' &&
       order.fulfillmentStatus !== 'cancelled' &&
@@ -448,6 +497,12 @@ export const vendorOrderService = {
       { parentOrderId: order._id, status: { $ne: 'cancelled' } },
       { $set: { status: 'cancelled' } },
     );
+
+    const vendorOrders = await VendorOrderModel.find({ parentOrderId: order._id }).select('_id');
+
+    for (const vo of vendorOrders) {
+      await walletService.reversePendingEarnings(vo._id);
+    }
 
     for (const reservation of cancelled.stockReservations) {
       await restoreStockWithMovement({

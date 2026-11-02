@@ -9,7 +9,7 @@ import {
   listVendorOrdersQuerySchema,
   vendorOrderIdParamsSchema,
   updateVendorOrderStatusSchema,
-  dispatchInboundSchema,
+  updateAdminOrderStatusSchema,
   codCollectionSchema,
   codRemittanceSchema,
 } from './vendor-order.validator';
@@ -43,20 +43,6 @@ vendorOrderRouter.post(
   vendorOrderController.updateStatus,
 );
 
-vendorOrderRouter.post(
-  '/:vendorOrderId/inbound',
-  ...requirePermissions(vendorOrderPermissions.dispatchInbound),
-  validate({ params: vendorOrderIdParamsSchema, body: dispatchInboundSchema }),
-  vendorOrderController.dispatchInbound,
-);
-
-vendorOrderRouter.post(
-  '/:vendorOrderId/inbound/in-transit',
-  ...requirePermissions(vendorOrderPermissions.markInboundInTransit),
-  validate({ params: vendorOrderIdParamsSchema }),
-  vendorOrderController.markInboundInTransit,
-);
-
 export const adminOrderManagementRouter = Router();
 
 adminOrderManagementRouter.get(
@@ -78,6 +64,13 @@ adminOrderManagementRouter.post(
   ...requirePermissions(adminOrderPermissions.cancel),
   validate({ params: adminOrderIdParamsSchema }),
   adminOrderController.cancel,
+);
+
+adminOrderManagementRouter.post(
+  '/:orderId/status',
+  ...requirePermissions(adminOrderPermissions.read),
+  validate({ params: adminOrderIdParamsSchema, body: updateAdminOrderStatusSchema }),
+  adminOrderController.updateStatus,
 );
 
 adminOrderManagementRouter.post(

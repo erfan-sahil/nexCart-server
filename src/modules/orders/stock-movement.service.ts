@@ -67,3 +67,34 @@ export const restoreStockWithMovement = async (input: {
   );
   await syncListing(input.productId);
 };
+
+/** Accepted at warehouse: custody transfer only — sellable stock was already reserved at checkout. */
+export const moveReservedToWarehouseCustody = async (input: {
+  orderId: Types.ObjectId | string;
+  variantId: Types.ObjectId;
+  productId: Types.ObjectId;
+  quantity: number;
+  idempotencyKey: string;
+}) => {
+  await recordStockMovement({
+    orderId: input.orderId,
+    variantId: input.variantId,
+    productId: input.productId,
+    quantity: input.quantity,
+    direction: 'decrement',
+    custody: 'at_vendor',
+    reason: 'warehouse_accept_custody_out',
+    idempotencyKey: `${input.idempotencyKey}:out`,
+  });
+
+  await recordStockMovement({
+    orderId: input.orderId,
+    variantId: input.variantId,
+    productId: input.productId,
+    quantity: input.quantity,
+    direction: 'increment',
+    custody: 'at_warehouse',
+    reason: 'warehouse_accept_custody_in',
+    idempotencyKey: `${input.idempotencyKey}:in`,
+  });
+};

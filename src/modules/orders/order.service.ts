@@ -9,6 +9,7 @@ import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import { runIdempotent } from '../../common/utils/idempotency';
 import { IdempotencyScope } from './constants';
 import { assertOrderOwner, customerObjectId, toOrderDto, toOrderTrackingDto } from './order.mapper';
+import { VendorOrderModel } from './vendor-order.model';
 import { buildOrderNumber, buildTotals, quoteCheckout, resolveCheckoutLines } from './pricing';
 import { couponService } from '../coupons/coupon.service';
 import {
@@ -185,7 +186,7 @@ export const orderService = {
     ]);
 
     return {
-      items: orders.map(toOrderDto),
+      items: orders.map((order) => toOrderDto(order)),
       page: query.page,
       limit: query.limit,
       total,
@@ -207,7 +208,12 @@ export const orderService = {
 
     assertOrderOwner(order, actor.customerId);
 
-    return toOrderDto(order);
+    const [vendorOrders, shipment] = await Promise.all([
+      VendorOrderModel.find({ parentOrderId: order._id }).select('status'),
+      ShipmentModel.findOne({ orderId: order._id }).select('status'),
+    ]);
+
+    return toOrderDto(order, vendorOrders, shipment?.status ?? null);
   },
 
   async track(input: TrackOrderInput): Promise<OrderTrackingDto> {
@@ -225,12 +231,13 @@ export const orderService = {
       throw AppError.notFound(TRACK_MISS);
     }
 
-    const [shipment, fulfillments, products] = await Promise.all([
+    const [shipment, fulfillments, products, vendorOrders] = await Promise.all([
       ShipmentModel.findOne({ orderId: order._id }),
       VendorFulfillmentModel.find({ orderId: order._id }),
       ProductModel.find({
         _id: { $in: [...new Set(order.items.map((item) => item.productId))] },
       }).select('slug images thumbnailId'),
+      VendorOrderModel.find({ parentOrderId: order._id }).select('status'),
     ]);
 
     return toOrderTrackingDto(
@@ -238,6 +245,7 @@ export const orderService = {
       shipment,
       fulfillments,
       new Map(products.map((product) => [String(product._id), product])),
+      vendorOrders,
     );
   },
 };

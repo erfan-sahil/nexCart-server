@@ -3,16 +3,10 @@ import { requirePermissions } from '../../common/middleware/authorize';
 import { validate } from '../../common/middleware/validate';
 import { fulfillmentController, fulfillmentPermissions } from './fulfillment.controller';
 import {
-  codCollectionSchema,
-  deliverOrderSchema,
-  dispatchFulfillmentSchema,
   fulfillmentIdParamsSchema,
-  inspectFulfillmentSchema,
   listAdminFulfillmentsQuerySchema,
   listVendorFulfillmentsQuerySchema,
   orderIdParamsSchema,
-  receiveFulfillmentSchema,
-  shipOrderSchema,
 } from './fulfillment.validator';
 
 export const vendorFulfillmentRouter = Router();
@@ -31,13 +25,6 @@ vendorFulfillmentRouter.get(
   fulfillmentController.getVendor,
 );
 
-vendorFulfillmentRouter.post(
-  '/:fulfillmentId/dispatch',
-  ...requirePermissions(fulfillmentPermissions.vendorDispatch),
-  validate({ params: fulfillmentIdParamsSchema, body: dispatchFulfillmentSchema }),
-  fulfillmentController.dispatch,
-);
-
 export const adminFulfillmentRouter = Router();
 
 adminFulfillmentRouter.get(
@@ -54,27 +41,6 @@ adminFulfillmentRouter.get(
   fulfillmentController.getAdminFulfillment,
 );
 
-adminFulfillmentRouter.post(
-  '/:fulfillmentId/receive',
-  ...requirePermissions(fulfillmentPermissions.adminWarehouse),
-  validate({ params: fulfillmentIdParamsSchema, body: receiveFulfillmentSchema }),
-  fulfillmentController.receive,
-);
-
-adminFulfillmentRouter.post(
-  '/:fulfillmentId/inspect/start',
-  ...requirePermissions(fulfillmentPermissions.adminWarehouse),
-  validate({ params: fulfillmentIdParamsSchema }),
-  fulfillmentController.startInspect,
-);
-
-adminFulfillmentRouter.post(
-  '/:fulfillmentId/inspect',
-  ...requirePermissions(fulfillmentPermissions.adminWarehouse),
-  validate({ params: fulfillmentIdParamsSchema, body: inspectFulfillmentSchema }),
-  fulfillmentController.inspect,
-);
-
 export const adminOrderFulfillmentRouter = Router();
 
 adminOrderFulfillmentRouter.get(
@@ -82,32 +48,4 @@ adminOrderFulfillmentRouter.get(
   ...requirePermissions(fulfillmentPermissions.adminRead),
   validate({ params: orderIdParamsSchema }),
   fulfillmentController.getOrderFulfillment,
-);
-
-adminOrderFulfillmentRouter.post(
-  '/:orderId/shipment/pack',
-  ...requirePermissions(fulfillmentPermissions.adminWarehouse),
-  validate({ params: orderIdParamsSchema }),
-  fulfillmentController.packShipment,
-);
-
-adminOrderFulfillmentRouter.post(
-  '/:orderId/shipment/ship',
-  ...requirePermissions(fulfillmentPermissions.adminWarehouse),
-  validate({ params: orderIdParamsSchema, body: shipOrderSchema }),
-  fulfillmentController.shipOrder,
-);
-
-adminOrderFulfillmentRouter.post(
-  '/:orderId/shipment/deliver',
-  ...requirePermissions(fulfillmentPermissions.adminWarehouse),
-  validate({ params: orderIdParamsSchema, body: deliverOrderSchema }),
-  fulfillmentController.deliverOrder,
-);
-
-adminOrderFulfillmentRouter.post(
-  '/:orderId/cod-collection',
-  ...requirePermissions(fulfillmentPermissions.adminWarehouse),
-  validate({ params: orderIdParamsSchema, body: codCollectionSchema }),
-  fulfillmentController.recordCodCollection,
 );

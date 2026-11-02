@@ -140,7 +140,7 @@ export const walletService = {
   async releaseEligibleForStore(storeId: string) {
     const completed = await VendorOrderModel.find({
       storeId,
-      status: 'completed',
+      status: { $in: ['delivered', 'completed'] },
       vendorEarnings: { $gt: 0 },
     }).select('_id vendorEarnings parentOrderId vendorUserId storeId');
 
@@ -254,5 +254,95 @@ export const walletService = {
       limit,
       total,
     };
+  },
+
+  async reversePendingEarnings(vendorOrderId: Types.ObjectId | string) {
+    const row = await VendorOrderModel.findById(vendorOrderId);
+
+    if (!row || row.commissionRate === null || row.commissionAmount === null) {
+      return;
+    }
+
+    const saleKey = `vendorOrder:${String(row._id)}:sale:reverse`;
+    const commissionKey = `vendorOrder:${String(row._id)}:commission:reverse`;
+
+    try {
+      await LedgerEntryModel.create({
+        vendorUserId: row.vendorUserId,
+        storeId: row.storeId,
+        vendorOrderId: row._id,
+        parentOrderId: row.parentOrderId,
+        type: 'adjustment_debit',
+        amount: row.itemsSubtotal,
+        account: 'pending',
+        idempotencyKey: saleKey,
+      });
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+    }
+
+    try {
+      await LedgerEntryModel.create({
+        vendorUserId: row.vendorUserId,
+        storeId: row.storeId,
+        vendorOrderId: row._id,
+        parentOrderId: row.parentOrderId,
+        type: 'adjustment_credit',
+        amount: row.commissionAmount,
+        account: 'pending',
+        idempotencyKey: commissionKey,
+      });
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+    }
+  },
+
+  async adjustPendingEarningsToSubtotal(
+    vendorOrderId: Types.ObjectId | string,
+    newSubtotal: number,
+  ) {
+    const row = await VendorOrderModel.findById(vendorOrderId);
+
+    if (!row || row.commissionRate === null || row.commissionRate === undefined) {
+      return;
+    }
+
+    const rate = row.commissionRate;
+    const commissionAmount = money((newSubtotal * rate) / 100);
+    const vendorEarnings = money(newSubtotal - commissionAmount);
+
+    await VendorOrderModel.updateOne(
+      { _id: row._id },
+      {
+        $set: {
+          itemsSubtotal: newSubtotal,
+          commissionAmount,
+          vendorEarnings,
+        },
+      },
+    );
+
+    const adjustKey = `vendorOrder:${String(row._id)}:adjust:${newSubtotal}`;
+
+    try {
+      await LedgerEntryModel.create({
+        vendorUserId: row.vendorUserId,
+        storeId: row.storeId,
+        vendorOrderId: row._id,
+        parentOrderId: row.parentOrderId,
+        type: 'adjustment_debit',
+        amount: Math.max(0, row.itemsSubtotal - newSubtotal),
+        account: 'pending',
+        idempotencyKey: `${adjustKey}:sale-debit`,
+      });
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+    }
   },
 };

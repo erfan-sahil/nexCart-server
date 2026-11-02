@@ -3,6 +3,8 @@ import { Permission } from '../../common/constants/permissions';
 import { asyncHandler } from '../../common/http/asyncHandler';
 import { sendPaginated, sendSuccess } from '../../common/http/sendResponse';
 import { AppError } from '../../common/errors/AppError';
+import { readIdempotencyKey, runIdempotent } from '../../common/utils/idempotency';
+import { IdempotencyScope } from './constants';
 import { vendorOrderService } from './vendor-order.service';
 import type { ListVendorOrdersQuery, UpdateVendorOrderStatusBody } from './vendor-order.validator';
 
@@ -44,35 +46,19 @@ const updateStatus = asyncHandler(async (req: Request, res: Response) => {
     ? req.params.vendorOrderId[0]
     : req.params.vendorOrderId;
   const body = req.body as UpdateVendorOrderStatusBody;
-  const data = await vendorOrderService.updateStatus(vendorUserId(req), vendorOrderId ?? '', body);
+  const actorId = vendorUserId(req);
+  const data = await runIdempotent({
+    customerId: actorId,
+    scope: IdempotencyScope.vendorOrderStatus,
+    key: readIdempotencyKey(req.headers['idempotency-key']),
+    requestBody: body,
+    handler: async () => ({
+      statusCode: 200,
+      body: await vendorOrderService.updateStatus(actorId, vendorOrderId ?? '', body),
+    }),
+  });
 
   sendSuccess(res, data, { message: 'Order status updated' });
-});
-
-const dispatchInbound = asyncHandler(async (req: Request, res: Response) => {
-  const vendorOrderId = Array.isArray(req.params.vendorOrderId)
-    ? req.params.vendorOrderId[0]
-    : req.params.vendorOrderId;
-  const body = req.body as { inboundCarrier: string; inboundTracking: string };
-  const data = await vendorOrderService.dispatchInbound(
-    vendorUserId(req),
-    vendorOrderId ?? '',
-    body,
-  );
-
-  sendSuccess(res, data, { message: 'Inbound shipment dispatched' });
-});
-
-const markInboundInTransit = asyncHandler(async (req: Request, res: Response) => {
-  const vendorOrderId = Array.isArray(req.params.vendorOrderId)
-    ? req.params.vendorOrderId[0]
-    : req.params.vendorOrderId;
-  const data = await vendorOrderService.markInboundInTransit(
-    vendorUserId(req),
-    vendorOrderId ?? '',
-  );
-
-  sendSuccess(res, data, { message: 'Marked in transit' });
 });
 
 export const vendorOrderController = {
@@ -80,8 +66,6 @@ export const vendorOrderController = {
   summary,
   getById,
   updateStatus,
-  dispatchInbound,
-  markInboundInTransit,
 };
 
 export const vendorOrderPermissions = {
@@ -89,6 +73,4 @@ export const vendorOrderPermissions = {
   read: Permission.vendorOrders,
   summary: Permission.vendorOrders,
   updateStatus: Permission.vendorOrders,
-  dispatchInbound: Permission.vendorShipping,
-  markInboundInTransit: Permission.vendorShipping,
 };

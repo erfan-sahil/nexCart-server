@@ -14,6 +14,7 @@
     "format:check": "prettier --check .",
     "seed:categories": "tsx src/scripts/seedCategories.ts",
     "seed:products": "tsx src/scripts/seedProducts.ts",
+    "migrate:vendor-orders": "tsx src/scripts/migrateVendorOrderLifecycle.ts",
     "check": "npm run lint && npm run format:check && npm run typecheck",
     "prepare": "husky"
   },
