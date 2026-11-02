@@ -66,6 +66,32 @@ const markReady = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, data, { message: 'Marked ready to ship' });
 });
 
+const dispatchInbound = asyncHandler(async (req: Request, res: Response) => {
+  const vendorOrderId = Array.isArray(req.params.vendorOrderId)
+    ? req.params.vendorOrderId[0]
+    : req.params.vendorOrderId;
+  const body = req.body as { inboundCarrier: string; inboundTracking: string };
+  const data = await vendorOrderService.dispatchInbound(
+    vendorUserId(req),
+    vendorOrderId ?? '',
+    body,
+  );
+
+  sendSuccess(res, data, { message: 'Inbound shipment dispatched' });
+});
+
+const markInboundInTransit = asyncHandler(async (req: Request, res: Response) => {
+  const vendorOrderId = Array.isArray(req.params.vendorOrderId)
+    ? req.params.vendorOrderId[0]
+    : req.params.vendorOrderId;
+  const data = await vendorOrderService.markInboundInTransit(
+    vendorUserId(req),
+    vendorOrderId ?? '',
+  );
+
+  sendSuccess(res, data, { message: 'Marked in transit' });
+});
+
 export const vendorOrderController = {
   list,
   summary,
@@ -73,6 +99,8 @@ export const vendorOrderController = {
   accept,
   prepare,
   markReady,
+  dispatchInbound,
+  markInboundInTransit,
 };
 
 export const vendorOrderPermissions = {
@@ -82,4 +110,6 @@ export const vendorOrderPermissions = {
   accept: Permission.vendorOrders,
   prepare: Permission.vendorOrders,
   ready: Permission.vendorOrders,
+  dispatchInbound: Permission.vendorShipping,
+  markInboundInTransit: Permission.vendorShipping,
 };

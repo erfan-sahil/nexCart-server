@@ -8,6 +8,7 @@ import {
   dispatchFulfillmentSchema,
   fulfillmentIdParamsSchema,
   inspectFulfillmentSchema,
+  listAdminFulfillmentsQuerySchema,
   listVendorFulfillmentsQuerySchema,
   orderIdParamsSchema,
   receiveFulfillmentSchema,
@@ -40,6 +41,13 @@ vendorFulfillmentRouter.post(
 export const adminFulfillmentRouter = Router();
 
 adminFulfillmentRouter.get(
+  '/',
+  ...requirePermissions(fulfillmentPermissions.adminRead),
+  validate({ query: listAdminFulfillmentsQuerySchema }),
+  fulfillmentController.listAdmin,
+);
+
+adminFulfillmentRouter.get(
   '/:fulfillmentId',
   ...requirePermissions(fulfillmentPermissions.adminRead),
   validate({ params: fulfillmentIdParamsSchema }),
@@ -51,6 +59,13 @@ adminFulfillmentRouter.post(
   ...requirePermissions(fulfillmentPermissions.adminWarehouse),
   validate({ params: fulfillmentIdParamsSchema, body: receiveFulfillmentSchema }),
   fulfillmentController.receive,
+);
+
+adminFulfillmentRouter.post(
+  '/:fulfillmentId/inspect/start',
+  ...requirePermissions(fulfillmentPermissions.adminWarehouse),
+  validate({ params: fulfillmentIdParamsSchema }),
+  fulfillmentController.startInspect,
 );
 
 adminFulfillmentRouter.post(

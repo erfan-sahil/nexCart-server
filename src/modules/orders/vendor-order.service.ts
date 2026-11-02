@@ -17,6 +17,7 @@ import {
 } from './vendor-order.mapper';
 import type { ListAdminOrdersQuery, ListVendorOrdersQuery } from './vendor-order.validator';
 import { fulfillmentService } from '../fulfillment/fulfillment.service';
+import { toVendorFulfillmentDto } from '../fulfillment/fulfillment.mapper';
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -201,7 +202,37 @@ export const vendorOrderService = {
 
   async getForVendor(vendorUserId: string, vendorOrderId: string) {
     const row = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
-    return toVendorOrderDto(row);
+    const fulfillment = await VendorFulfillmentModel.findOne({ vendorOrderId: row._id });
+    return {
+      ...toVendorOrderDto(row),
+      inbound: fulfillment ? toVendorFulfillmentDto(fulfillment) : null,
+    };
+  },
+
+  async dispatchInbound(
+    vendorUserId: string,
+    vendorOrderId: string,
+    input: { inboundCarrier: string; inboundTracking: string },
+  ) {
+    const row = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
+    const fulfillment = await VendorFulfillmentModel.findOne({ vendorOrderId: row._id });
+
+    if (!fulfillment) {
+      throw AppError.notFound('Inbound shipment not found');
+    }
+
+    return fulfillmentService.dispatch(vendorUserId, String(fulfillment._id), input);
+  },
+
+  async markInboundInTransit(vendorUserId: string, vendorOrderId: string) {
+    const row = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
+    const fulfillment = await VendorFulfillmentModel.findOne({ vendorOrderId: row._id });
+
+    if (!fulfillment) {
+      throw AppError.notFound('Inbound shipment not found');
+    }
+
+    return fulfillmentService.markInboundInTransit(vendorUserId, String(fulfillment._id));
   },
 
   async transitionVendorOrder(

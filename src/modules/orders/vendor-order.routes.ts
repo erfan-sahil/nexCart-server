@@ -8,6 +8,7 @@ import {
   listAdminOrdersQuerySchema,
   listVendorOrdersQuerySchema,
   vendorOrderIdParamsSchema,
+  dispatchInboundSchema,
 } from './vendor-order.validator';
 
 export const vendorOrderRouter = Router();
@@ -51,6 +52,20 @@ vendorOrderRouter.post(
   ...requirePermissions(vendorOrderPermissions.ready),
   validate({ params: vendorOrderIdParamsSchema }),
   vendorOrderController.markReady,
+);
+
+vendorOrderRouter.post(
+  '/:vendorOrderId/inbound',
+  ...requirePermissions(vendorOrderPermissions.dispatchInbound),
+  validate({ params: vendorOrderIdParamsSchema, body: dispatchInboundSchema }),
+  vendorOrderController.dispatchInbound,
+);
+
+vendorOrderRouter.post(
+  '/:vendorOrderId/inbound/in-transit',
+  ...requirePermissions(vendorOrderPermissions.markInboundInTransit),
+  validate({ params: vendorOrderIdParamsSchema }),
+  vendorOrderController.markInboundInTransit,
 );
 
 export const adminOrderManagementRouter = Router();

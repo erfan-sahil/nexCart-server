@@ -25,5 +25,10 @@ export const adminOrderIdParamsSchema = z.object({
   orderId: z.string().min(1),
 });
 
+export const dispatchInboundSchema = z.object({
+  inboundCarrier: z.string().trim().min(1).max(80),
+  inboundTracking: z.string().trim().min(1).max(80),
+});
+
 export type ListVendorOrdersQuery = z.infer<typeof listVendorOrdersQuerySchema>;
 export type ListAdminOrdersQuery = z.infer<typeof listAdminOrdersQuerySchema>;

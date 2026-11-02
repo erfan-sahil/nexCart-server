@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { VENDOR_FULFILLMENT_SORTS, VENDOR_FULFILLMENT_STATUSES } from './constants';
+import {
+  FULFILLMENT_REJECTION_REASONS,
+  VENDOR_FULFILLMENT_SORTS,
+  VENDOR_FULFILLMENT_STATUSES,
+} from './constants';
 
 const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
 
@@ -35,9 +39,18 @@ export const inspectFulfillmentSchema = z.object({
         variantId: objectIdSchema,
         quantityAccepted: z.coerce.number().int().min(0),
         quantityRejected: z.coerce.number().int().min(0),
+        rejectionReason: z.enum(FULFILLMENT_REJECTION_REASONS).optional(),
+        rejectionNote: z.string().trim().max(300).optional(),
       }),
     )
     .min(1),
+});
+
+export const listAdminFulfillmentsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  status: z.enum(VENDOR_FULFILLMENT_STATUSES).optional(),
+  orderNumber: z.string().trim().max(32).optional(),
 });
 
 export const orderIdParamsSchema = z.object({
@@ -56,6 +69,7 @@ export const codCollectionSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
+export type ListAdminFulfillmentsQuery = z.infer<typeof listAdminFulfillmentsQuerySchema>;
 export type ListVendorFulfillmentsQuery = z.infer<typeof listVendorFulfillmentsQuerySchema>;
 export type DispatchFulfillmentInput = z.infer<typeof dispatchFulfillmentSchema>;
 export type ReceiveFulfillmentInput = z.infer<typeof receiveFulfillmentSchema>;

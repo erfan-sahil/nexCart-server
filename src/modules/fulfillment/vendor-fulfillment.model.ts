@@ -1,5 +1,5 @@
 import { Schema, model, type InferSchemaType, type Types } from 'mongoose';
-import { VENDOR_FULFILLMENT_STATUSES } from './constants';
+import { FULFILLMENT_REJECTION_REASONS, VENDOR_FULFILLMENT_STATUSES } from './constants';
 
 const fulfillmentItemSchema = new Schema(
   {
@@ -11,6 +11,12 @@ const fulfillmentItemSchema = new Schema(
     quantityReceived: { type: Number, required: true, default: 0, min: 0 },
     quantityAccepted: { type: Number, required: true, default: 0, min: 0 },
     quantityRejected: { type: Number, required: true, default: 0, min: 0 },
+    rejectionReason: {
+      type: String,
+      enum: FULFILLMENT_REJECTION_REASONS,
+      default: null,
+    },
+    rejectionNote: { type: String, trim: true, maxlength: 300, default: '' },
   },
   { _id: false },
 );
@@ -43,6 +49,11 @@ const vendorFulfillmentSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+    },
+    vendorOrderId: {
+      type: Schema.Types.ObjectId,
+      ref: 'VendorOrder',
+      default: null,
     },
     status: {
       type: String,
@@ -89,6 +100,8 @@ const vendorFulfillmentSchema = new Schema(
 vendorFulfillmentSchema.index({ storeId: 1, status: 1, createdAt: -1 });
 vendorFulfillmentSchema.index({ orderId: 1, storeId: 1 }, { unique: true });
 vendorFulfillmentSchema.index({ vendorUserId: 1, createdAt: -1 });
+vendorFulfillmentSchema.index({ vendorOrderId: 1 }, { unique: true, sparse: true });
+vendorFulfillmentSchema.index({ status: 1, updatedAt: -1 });
 
 export type VendorFulfillment = InferSchemaType<typeof vendorFulfillmentSchema> & {
   _id: Types.ObjectId;
