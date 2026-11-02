@@ -8,6 +8,7 @@ import {
   listAdminOrdersQuerySchema,
   listVendorOrdersQuerySchema,
   vendorOrderIdParamsSchema,
+  updateVendorOrderStatusSchema,
   dispatchInboundSchema,
   codCollectionSchema,
   codRemittanceSchema,
@@ -36,24 +37,10 @@ vendorOrderRouter.get(
 );
 
 vendorOrderRouter.post(
-  '/:vendorOrderId/accept',
-  ...requirePermissions(vendorOrderPermissions.accept),
-  validate({ params: vendorOrderIdParamsSchema }),
-  vendorOrderController.accept,
-);
-
-vendorOrderRouter.post(
-  '/:vendorOrderId/prepare',
-  ...requirePermissions(vendorOrderPermissions.prepare),
-  validate({ params: vendorOrderIdParamsSchema }),
-  vendorOrderController.prepare,
-);
-
-vendorOrderRouter.post(
-  '/:vendorOrderId/ready',
-  ...requirePermissions(vendorOrderPermissions.ready),
-  validate({ params: vendorOrderIdParamsSchema }),
-  vendorOrderController.markReady,
+  '/:vendorOrderId/status',
+  ...requirePermissions(vendorOrderPermissions.updateStatus),
+  validate({ params: vendorOrderIdParamsSchema, body: updateVendorOrderStatusSchema }),
+  vendorOrderController.updateStatus,
 );
 
 vendorOrderRouter.post(

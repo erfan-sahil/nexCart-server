@@ -16,7 +16,11 @@ import {
   toVendorOrderDto,
   toVendorOrderSummary,
 } from './vendor-order.mapper';
-import type { ListAdminOrdersQuery, ListVendorOrdersQuery } from './vendor-order.validator';
+import type {
+  ListAdminOrdersQuery,
+  ListVendorOrdersQuery,
+  UpdateVendorOrderStatusBody,
+} from './vendor-order.validator';
 import { fulfillmentService } from '../fulfillment/fulfillment.service';
 import { toVendorFulfillmentDto } from '../fulfillment/fulfillment.mapper';
 
@@ -272,34 +276,71 @@ export const vendorOrderService = {
     return toVendorOrderDto(updated);
   },
 
-  async accept(vendorUserId: string, vendorOrderId: string) {
-    return this.transitionVendorOrder(
-      vendorUserId,
-      vendorOrderId,
-      'pending',
-      'accepted',
-      'vendor_order_accepted',
-    );
-  },
+  async updateStatus(
+    vendorUserId: string,
+    vendorOrderId: string,
+    input: UpdateVendorOrderStatusBody,
+  ) {
+    if (input.status === 'accepted') {
+      return this.transitionVendorOrder(
+        vendorUserId,
+        vendorOrderId,
+        'pending',
+        'accepted',
+        'vendor_order_accepted',
+      );
+    }
 
-  async prepare(vendorUserId: string, vendorOrderId: string) {
-    return this.transitionVendorOrder(
-      vendorUserId,
-      vendorOrderId,
-      'accepted',
-      'preparing',
-      'vendor_order_preparing',
-    );
-  },
+    if (input.status === 'cancelled') {
+      const row = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
+      const updated = await this.transitionVendorOrder(
+        vendorUserId,
+        vendorOrderId,
+        'pending',
+        'cancelled',
+        'vendor_order_rejected',
+      );
 
-  async markReady(vendorUserId: string, vendorOrderId: string) {
-    return this.transitionVendorOrder(
-      vendorUserId,
-      vendorOrderId,
-      'preparing',
-      'ready_to_ship',
-      'vendor_order_ready_to_ship',
-    );
+      for (const item of row.items) {
+        await restoreStockWithMovement({
+          orderId: row.parentOrderId,
+          variantId: item.variantId,
+          productId: item.productId,
+          quantity: item.quantity,
+          idempotencyKey: `order:${String(row.parentOrderId)}:vendor-reject:${String(row._id)}:${item.sku}`,
+          reason: 'vendor_order_rejected',
+        });
+      }
+
+      return updated;
+    }
+
+    if (input.status === 'preparing') {
+      return this.transitionVendorOrder(
+        vendorUserId,
+        vendorOrderId,
+        'accepted',
+        'preparing',
+        'vendor_order_preparing',
+      );
+    }
+
+    if (input.status === 'ready_to_ship') {
+      return this.transitionVendorOrder(
+        vendorUserId,
+        vendorOrderId,
+        'preparing',
+        'ready_to_ship',
+        'vendor_order_ready_to_ship',
+      );
+    }
+
+    await this.dispatchInbound(vendorUserId, vendorOrderId, {
+      inboundCarrier: input.inboundCarrier!,
+      inboundTracking: input.inboundTracking!,
+    });
+
+    return this.getForVendor(vendorUserId, vendorOrderId);
   },
 
   async listForAdmin(query: ListAdminOrdersQuery) {
