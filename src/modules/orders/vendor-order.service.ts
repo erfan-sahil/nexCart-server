@@ -20,7 +20,11 @@ import {
   listRejectReturnsForVendorOrder,
   markAllInTransitReturnsReceivedByVendor,
 } from './reject-return.service';
-import { canVendorTransition } from './vendor-order-transitions';
+import {
+  canVendorTransition,
+  getVendorFulfillmentSteps,
+  vendorOrderStepAction,
+} from './vendor-order-transitions';
 import { restoreStockWithMovement } from './stock-movement.service';
 import {
   toAdminOrderDetail,
@@ -347,39 +351,60 @@ export const vendorOrderService = {
     if (input.status === 'preparing') {
       if (row.status === 'partially_accepted' || row.status === 'rejected_at_warehouse') {
         await assertResendAllowed(row._id);
-      }
 
-      return this.transitionVendorOrder(
-        vendorUserId,
-        vendorOrderId,
-        row.status,
-        'preparing',
-        'vendor_order_preparing',
-      );
+        return this.transitionVendorOrder(
+          vendorUserId,
+          vendorOrderId,
+          row.status,
+          'preparing',
+          'vendor_order_preparing',
+        );
+      }
     }
 
-    if (input.status === 'sending_to_warehouse') {
-      const updated = await this.transitionVendorOrder(
-        vendorUserId,
-        vendorOrderId,
-        'preparing',
-        'sending_to_warehouse',
-        'vendor_order_sending_to_warehouse',
-      );
+    const fulfillmentSteps = getVendorFulfillmentSteps(row.status, input.status);
 
-      const fresh = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
-      const sentLines = buildSentLinesFromVendorOrder(fresh);
-      await createDispatchBatch(fresh, sentLines);
+    if (fulfillmentSteps?.length) {
+      let fromStatus = row.status;
+      let lastUpdated = toVendorOrderDto(row);
 
-      const fulfillment = await VendorFulfillmentModel.findOne({ vendorOrderId: fresh._id });
+      for (const step of fulfillmentSteps) {
+        if (step === 'sending_to_warehouse') {
+          lastUpdated = await this.transitionVendorOrder(
+            vendorUserId,
+            vendorOrderId,
+            'preparing',
+            'sending_to_warehouse',
+            'vendor_order_sending_to_warehouse',
+          );
 
-      if (fulfillment && fulfillment.status === 'pending') {
-        fulfillment.status = 'dispatched';
-        fulfillment.dispatchedAt = new Date();
-        await fulfillment.save();
+          const fresh = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
+          const sentLines = buildSentLinesFromVendorOrder(fresh);
+          await createDispatchBatch(fresh, sentLines);
+
+          const fulfillment = await VendorFulfillmentModel.findOne({ vendorOrderId: fresh._id });
+
+          if (fulfillment && fulfillment.status === 'pending') {
+            fulfillment.status = 'dispatched';
+            fulfillment.dispatchedAt = new Date();
+            await fulfillment.save();
+          }
+
+          fromStatus = 'sending_to_warehouse';
+          continue;
+        }
+
+        lastUpdated = await this.transitionVendorOrder(
+          vendorUserId,
+          vendorOrderId,
+          fromStatus,
+          step,
+          vendorOrderStepAction(step),
+        );
+        fromStatus = step;
       }
 
-      return updated;
+      return lastUpdated;
     }
 
     return this.transitionVendorOrder(
@@ -387,7 +412,7 @@ export const vendorOrderService = {
       vendorOrderId,
       row.status,
       input.status,
-      `vendor_order_${input.status}`,
+      vendorOrderStepAction(input.status),
     );
   },
 
