@@ -1,9 +1,10 @@
 import type { Order } from './order.model';
-import type { OrderFulfillmentStatus, OrderStatus } from './constants';
+import type { CustomerOrderStatus, OrderFulfillmentStatus, OrderStatus } from './constants';
 
+/** Legacy coarse projection when vendor orders are not loaded. */
 export const projectCustomerStatus = (
   order: Pick<Order, 'status' | 'fulfillmentStatus'>,
-): OrderStatus => {
+): OrderStatus | CustomerOrderStatus => {
   if (order.status === 'cancelled' || order.fulfillmentStatus === 'cancelled') {
     return 'cancelled';
   }
@@ -20,18 +21,15 @@ export const projectCustomerStatus = (
     return 'delivered';
   }
 
-  if (
-    order.status === 'shipped' ||
-    order.fulfillmentStatus === 'shipped' ||
-    order.fulfillmentStatus === 'ready_for_dispatch'
-  ) {
-    return 'shipped';
+  if (order.status === 'shipped' || order.fulfillmentStatus === 'shipped') {
+    return 'confirmed';
   }
 
   if (
     order.status === 'confirmed' ||
     order.fulfillmentStatus === 'confirmed' ||
-    order.fulfillmentStatus === 'processing'
+    order.fulfillmentStatus === 'processing' ||
+    order.fulfillmentStatus === 'ready_for_dispatch'
   ) {
     return 'confirmed';
   }

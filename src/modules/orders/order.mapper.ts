@@ -5,6 +5,8 @@ import type { Shipment } from '../fulfillment/shipment.model';
 import type { VendorFulfillment } from '../fulfillment/vendor-fulfillment.model';
 import { AppError } from '../../common/errors/AppError';
 import type { OrderDto, OrderShippingDto, OrderTrackingDto } from './types';
+import { projectCustomerStatusWithVendorOrders } from './customer-order-status.service';
+import type { VendorOrder } from './vendor-order.model';
 import { projectCustomerStatus } from './order-status';
 import { projectCustomerTimeline } from './order-timeline';
 
@@ -19,11 +21,17 @@ const toShippingDto = (shipping: Order['shipping']): OrderShippingDto => ({
   country: shipping.country,
 });
 
-export const toOrderDto = (order: Order): OrderDto => ({
+export const toOrderDto = (
+  order: Order,
+  vendorOrders?: Pick<VendorOrder, 'status'>[],
+  shipmentStatus?: string | null,
+): OrderDto => ({
   id: String(order._id),
   orderNumber: order.orderNumber,
   paymentMethod: order.paymentMethod,
-  status: projectCustomerStatus(order),
+  status: vendorOrders
+    ? projectCustomerStatusWithVendorOrders(order, vendorOrders, shipmentStatus)
+    : projectCustomerStatus(order),
   paymentStatus: order.paymentStatus,
   codCollectionStatus: order.codCollectionStatus,
   shipping: toShippingDto(order.shipping),
@@ -73,9 +81,12 @@ export const toOrderTrackingDto = (
   shipment: Shipment | null,
   fulfillments: VendorFulfillment[],
   products: Map<string, Pick<Product, 'slug' | 'thumbnailId' | 'images'>>,
+  vendorOrders?: Pick<VendorOrder, 'status'>[],
 ): OrderTrackingDto => ({
   orderNumber: order.orderNumber,
-  status: projectCustomerStatus(order),
+  status: vendorOrders
+    ? projectCustomerStatusWithVendorOrders(order, vendorOrders, shipment?.status ?? null)
+    : projectCustomerStatus(order),
   paymentMethod: order.paymentMethod,
   paymentStatus: order.paymentStatus,
   placedAt: order.createdAt.toISOString(),
@@ -94,7 +105,7 @@ export const toOrderTrackingDto = (
   shippedAt: iso(shipment?.shippedAt),
   deliveredAt: iso(shipment?.deliveredAt),
   fulfillmentStartedAt: iso(shipment?.createdAt),
-  timeline: projectCustomerTimeline({ order, shipment, fulfillments }),
+  timeline: projectCustomerTimeline({ order, shipment, vendorOrders }),
   grandTotal: order.grandTotal,
   currency: order.currency,
   items: order.items.map((item) => {

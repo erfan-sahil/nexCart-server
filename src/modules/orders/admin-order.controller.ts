@@ -3,9 +3,12 @@ import { Permission } from '../../common/constants/permissions';
 import { asyncHandler } from '../../common/http/asyncHandler';
 import { sendPaginated, sendSuccess } from '../../common/http/sendResponse';
 import { AppError } from '../../common/errors/AppError';
+import { readIdempotencyKey, runIdempotent } from '../../common/utils/idempotency';
+import { IdempotencyScope } from './constants';
 import { vendorOrderService } from './vendor-order.service';
+import { adminOrderStatusService } from './admin-order-status.service';
 import { codService } from './cod.service';
-import type { ListAdminOrdersQuery } from './vendor-order.validator';
+import type { ListAdminOrdersQuery, UpdateAdminOrderStatusBody } from './vendor-order.validator';
 
 const adminUserId = (req: Request) => {
   if (!req.auth) {
@@ -63,10 +66,29 @@ const codReconcile = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, data, { message: 'COD remittance reconciled' });
 });
 
+const updateStatus = asyncHandler(async (req: Request, res: Response) => {
+  const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.orderId;
+  const body = req.body as UpdateAdminOrderStatusBody;
+  const actorId = adminUserId(req);
+  const data = await runIdempotent({
+    customerId: actorId,
+    scope: IdempotencyScope.adminOrderStatus,
+    key: readIdempotencyKey(req.headers['idempotency-key']),
+    requestBody: body,
+    handler: async () => ({
+      statusCode: 200,
+      body: await adminOrderStatusService.updateStatus(actorId, orderId ?? '', body),
+    }),
+  });
+
+  sendSuccess(res, data, { message: 'Order status updated' });
+});
+
 export const adminOrderController = {
   list,
   getById,
   cancel,
+  updateStatus,
   codCollect,
   codRemit,
   codReconcile,

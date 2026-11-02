@@ -18,6 +18,7 @@ import {
   adminOrderManagementRouter,
   vendorOrderRouter,
 } from './modules/orders/vendor-order.routes';
+import { adminVendorOrderRouter } from './modules/orders/admin-vendor-order.routes';
 import { adminCommissionRouter, vendorWalletRouter } from './modules/wallet/wallet.routes';
 import {
   adminWithdrawalRouter,
@@ -58,6 +59,7 @@ apiRouter.use('/product-reports', productReportInboxRouter);
 apiRouter.use('/inventory', inventoryRouter);
 apiRouter.use('/orders', orderRouter);
 apiRouter.use('/vendor/orders', vendorOrderRouter);
+apiRouter.use('/admin/vendor-orders', adminVendorOrderRouter);
 apiRouter.use('/site-settings', siteSettingsRouter);
 apiRouter.use('/wishlist', wishlistRouter);
 apiRouter.use('/recently-viewed', recentlyViewedRouter);

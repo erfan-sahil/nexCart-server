@@ -567,9 +567,11 @@ export const fulfillmentService = {
 
     if (
       !shipment ||
-      !['dispatched', 'in_transit', 'out_for_delivery', 'shipped'].includes(shipment.status)
+      !['packed', 'dispatched', 'in_transit', 'out_for_delivery', 'shipped'].includes(
+        shipment.status,
+      )
     ) {
-      throw AppError.validation('Shipment must be in transit before delivery');
+      throw AppError.validation('Shipment must be packed before delivery');
     }
 
     shipment.status = 'delivered';
@@ -585,18 +587,6 @@ export const fulfillmentService = {
     await order.save();
     await rollupParentFulfillmentStatus(order._id);
     await recordOrderSales(order);
-
-    const vendorOrders = await VendorOrderModel.find({
-      parentOrderId: order._id,
-      status: 'received',
-    }).select('_id');
-
-    if (vendorOrders.length > 0) {
-      await VendorOrderModel.updateMany(
-        { _id: { $in: vendorOrders.map((row) => row._id) } },
-        { $set: { status: 'completed' } },
-      );
-    }
 
     const refreshed = await OrderModel.findById(order._id);
 

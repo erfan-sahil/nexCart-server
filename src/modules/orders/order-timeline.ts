@@ -1,6 +1,9 @@
 import type { Order } from './order.model';
 import type { Shipment } from '../fulfillment/shipment.model';
-import type { VendorFulfillment } from '../fulfillment/vendor-fulfillment.model';
+import type { CustomerOrderStatus } from './constants';
+import type { VendorOrder } from './vendor-order.model';
+import { projectCustomerStatusWithVendorOrders } from './customer-order-status.service';
+import { projectCustomerStatus } from './order-status';
 
 export type CustomerTimelineStep = {
   id: string;
@@ -9,73 +12,99 @@ export type CustomerTimelineStep = {
   completed: boolean;
 };
 
+const customerStatusRank = (
+  status: CustomerOrderStatus | ReturnType<typeof projectCustomerStatus>,
+) => {
+  const ranks: Record<string, number> = {
+    awaiting_payment: 0,
+    expired: 0,
+    cancelled: 0,
+    confirmed: 1,
+    product_accepted: 2,
+    shipped_to_warehouse: 3,
+    out_for_delivery: 4,
+    delivered: 5,
+    shipped: 3,
+  };
+
+  return ranks[status] ?? 0;
+};
+
 export const projectCustomerTimeline = (input: {
   order: Order;
   shipment: Shipment | null;
-  fulfillments: VendorFulfillment[];
+  vendorOrders?: Pick<VendorOrder, 'status'>[];
 }): CustomerTimelineStep[] => {
-  const { order, shipment, fulfillments } = input;
+  const { order, shipment, vendorOrders } = input;
 
+  const projected = vendorOrders?.length
+    ? projectCustomerStatusWithVendorOrders(order, vendorOrders, shipment?.status ?? null)
+    : projectCustomerStatus(order);
+
+  const rank = customerStatusRank(projected);
   const placedAt = order.createdAt.toISOString();
-  const anyPreparing = fulfillments.some((row) =>
-    ['pending', 'dispatched', 'in_transit'].includes(row.status),
-  );
-  const anyAtWarehouse = fulfillments.some((row) =>
-    ['received', 'inspecting', 'accepted', 'partially_accepted', 'rejected'].includes(row.status),
-  );
-  const allInspected = fulfillments.every((row) =>
-    ['accepted', 'partially_accepted', 'rejected'].includes(row.status),
-  );
-
-  const packedAt = shipment?.packedAt?.toISOString() ?? null;
   const shippedAt = shipment?.shippedAt?.toISOString() ?? null;
   const deliveredAt = shipment?.deliveredAt?.toISOString() ?? null;
 
-  const steps: CustomerTimelineStep[] = [
-    { id: 'placed', label: 'Order placed', at: placedAt, completed: true },
+  if (projected === 'cancelled' || projected === 'expired') {
+    return [
+      {
+        id: 'placed',
+        label: 'Order placed',
+        at: placedAt,
+        completed: true,
+      },
+      {
+        id: projected,
+        label: projected === 'cancelled' ? 'Order cancelled' : 'Order expired',
+        at: order.updatedAt.toISOString(),
+        completed: true,
+      },
+    ];
+  }
+
+  if (projected === 'awaiting_payment') {
+    return [
+      { id: 'placed', label: 'Order placed', at: placedAt, completed: true },
+      {
+        id: 'awaiting_payment',
+        label: 'Awaiting payment',
+        at: placedAt,
+        completed: false,
+      },
+    ];
+  }
+
+  return [
     {
-      id: 'preparing',
-      label: 'Vendors preparing products',
-      at: anyPreparing ? placedAt : null,
-      completed: anyPreparing || anyAtWarehouse || allInspected,
+      id: 'confirmed',
+      label: 'Order confirmed',
+      at: placedAt,
+      completed: rank >= 1,
     },
     {
-      id: 'at_warehouse',
-      label: 'Products arrived at NexCart warehouse',
-      at: anyAtWarehouse ? placedAt : null,
-      completed: anyAtWarehouse,
+      id: 'product_accepted',
+      label: 'Products accepted by vendors',
+      at: rank >= 2 ? placedAt : null,
+      completed: rank >= 2,
     },
     {
-      id: 'inspected',
-      label: 'Warehouse inspection completed',
-      at: allInspected ? placedAt : null,
-      completed: allInspected,
-    },
-    {
-      id: 'packing',
-      label: 'Products being packed',
-      at: packedAt,
-      completed: Boolean(packedAt),
-    },
-    {
-      id: 'shipped',
-      label: 'Order shipped',
-      at: shippedAt,
-      completed: Boolean(shippedAt),
+      id: 'shipped_to_warehouse',
+      label: 'Products on the way to NexCart',
+      at: rank >= 3 ? (shippedAt ?? placedAt) : null,
+      completed: rank >= 3,
     },
     {
       id: 'out_for_delivery',
       label: 'Out for delivery',
-      at: shipment?.status === 'out_for_delivery' ? shippedAt : null,
-      completed: shipment?.status === 'out_for_delivery' || shipment?.status === 'delivered',
+      at: rank >= 4 ? shippedAt : null,
+      completed: rank >= 4,
     },
     {
       id: 'delivered',
       label: 'Delivered',
       at: deliveredAt,
-      completed: shipment?.status === 'delivered' || order.status === 'delivered',
+      completed: rank >= 5,
     },
   ];
-
-  return steps;
 };
