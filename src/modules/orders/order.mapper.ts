@@ -4,6 +4,7 @@ import type { Product } from '../products/product.model';
 import type { Shipment } from '../fulfillment/shipment.model';
 import { AppError } from '../../common/errors/AppError';
 import type { OrderDto, OrderShippingDto, OrderTrackingDto } from './types';
+import { projectCustomerStatus } from './order-status';
 
 const toShippingDto = (shipping: Order['shipping']): OrderShippingDto => ({
   recipientName: shipping.recipientName,
@@ -20,7 +21,7 @@ export const toOrderDto = (order: Order): OrderDto => ({
   id: String(order._id),
   orderNumber: order.orderNumber,
   paymentMethod: order.paymentMethod,
-  status: order.status,
+  status: projectCustomerStatus(order),
   paymentStatus: order.paymentStatus,
   codCollectionStatus: order.codCollectionStatus,
   shipping: toShippingDto(order.shipping),
@@ -71,7 +72,7 @@ export const toOrderTrackingDto = (
   products: Map<string, Pick<Product, 'slug' | 'thumbnailId' | 'images'>>,
 ): OrderTrackingDto => ({
   orderNumber: order.orderNumber,
-  status: order.status,
+  status: projectCustomerStatus(order),
   paymentMethod: order.paymentMethod,
   paymentStatus: order.paymentStatus,
   placedAt: order.createdAt.toISOString(),

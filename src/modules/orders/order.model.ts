@@ -3,6 +3,7 @@ import {
   COD_COLLECTION_STATUSES,
   ORDER_CURRENCY,
   ORDER_PAYMENT_METHODS,
+  ORDER_FULFILLMENT_STATUSES,
   ORDER_PAYMENT_STATUSES,
   ORDER_STATUSES,
 } from './constants';
@@ -75,6 +76,12 @@ const orderSchema = new Schema(
       required: true,
       enum: ORDER_STATUSES,
       default: 'awaiting_payment',
+    },
+    fulfillmentStatus: {
+      type: String,
+      required: true,
+      enum: ORDER_FULFILLMENT_STATUSES,
+      default: 'placed',
     },
     paymentStatus: {
       type: String,

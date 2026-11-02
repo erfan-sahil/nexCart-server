@@ -16,6 +16,7 @@ import {
   reserveStock,
   stockHoldExpiresAt,
 } from './stock';
+import { recordStockMovement } from './stock-movement.service';
 import type { OrderDto, OrderQuoteDto, OrderTrackingDto } from './types';
 import type {
   CreateOrderInput,
@@ -82,6 +83,7 @@ export const orderService = {
             idempotencyKey,
             paymentMethod: input.paymentMethod,
             status: 'awaiting_payment',
+            fulfillmentStatus: 'placed',
             paymentStatus: 'unpaid',
             codCollectionStatus: 'not_applicable',
             shipping: input.shipping,
@@ -129,6 +131,19 @@ export const orderService = {
             stockReleasedAt: null,
             saleRecordedAt: null,
           });
+
+          for (const reservation of reservations) {
+            await recordStockMovement({
+              orderId: order._id,
+              variantId: reservation.variantId,
+              productId: reservation.productId,
+              quantity: reservation.quantity,
+              direction: 'decrement',
+              custody: 'at_vendor',
+              reason: 'checkout_reserve',
+              idempotencyKey: `order:${String(order._id)}:reserve:${String(reservation.variantId)}`,
+            });
+          }
 
           const dto = toOrderDto(order);
 

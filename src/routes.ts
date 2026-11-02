@@ -14,6 +14,10 @@ import { healthRouter } from './modules/health';
 import { heroRouter } from './modules/hero';
 import { inventoryRouter } from './modules/inventory';
 import { orderRouter } from './modules/orders';
+import {
+  adminOrderManagementRouter,
+  vendorOrderRouter,
+} from './modules/orders/vendor-order.routes';
 import { sslcommerzRouter } from './modules/payments';
 import { productReportInboxRouter, productReportOnProductRouter } from './modules/product-reports';
 import { productRouter } from './modules/products';
@@ -46,10 +50,12 @@ apiRouter.use('/products', productReportOnProductRouter);
 apiRouter.use('/product-reports', productReportInboxRouter);
 apiRouter.use('/inventory', inventoryRouter);
 apiRouter.use('/orders', orderRouter);
+apiRouter.use('/vendor/orders', vendorOrderRouter);
 apiRouter.use('/site-settings', siteSettingsRouter);
 apiRouter.use('/wishlist', wishlistRouter);
 apiRouter.use('/recently-viewed', recentlyViewedRouter);
 apiRouter.use('/payments/sslcommerz', sslcommerzRouter);
 apiRouter.use('/vendor/fulfillments', vendorFulfillmentRouter);
 apiRouter.use('/admin/fulfillments', adminFulfillmentRouter);
+apiRouter.use('/admin/orders', adminOrderManagementRouter);
 apiRouter.use('/admin/orders', adminOrderFulfillmentRouter);
