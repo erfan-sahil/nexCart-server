@@ -137,7 +137,18 @@ export const walletService = {
     return money(totals.credits - totals.debits);
   },
 
-  async releaseEligibleForStore(storeId: string) {
+  async releaseEligibleForStore(
+    storeId: string,
+    options: {
+      bypassHoldDays?: boolean;
+      bypassPaymentChecks?: boolean;
+      note?: string;
+    } = {},
+  ) {
+    const bypassHoldDays = options.bypassHoldDays === true;
+    const bypassPaymentChecks = options.bypassPaymentChecks === true;
+    const note = options.note?.trim() ?? '';
+
     const completed = await VendorOrderModel.find({
       storeId,
       status: { $in: ['delivered', 'completed'] },
@@ -145,6 +156,12 @@ export const walletService = {
     }).select('_id vendorEarnings parentOrderId vendorUserId storeId');
 
     const { holdDays } = await commissionService.resolveRate(storeId);
+
+    let releasedCount = 0;
+    let releasedAmount = 0;
+    let skippedHeld = 0;
+    let skippedPayment = 0;
+    let skippedAlreadyReleased = 0;
 
     for (const vendorOrder of completed) {
       const parent = await OrderModel.findById(vendorOrder.parentOrderId).select(
@@ -155,12 +172,16 @@ export const walletService = {
         continue;
       }
 
-      if (parent.paymentMethod === 'prepaid' && parent.paymentStatus !== 'paid') {
-        continue;
-      }
+      if (!bypassPaymentChecks) {
+        if (parent.paymentMethod === 'prepaid' && parent.paymentStatus !== 'paid') {
+          skippedPayment += 1;
+          continue;
+        }
 
-      if (parent.paymentMethod === 'cod' && parent.codRemittanceStatus !== 'reconciled') {
-        continue;
+        if (parent.paymentMethod === 'cod' && parent.codRemittanceStatus !== 'reconciled') {
+          skippedPayment += 1;
+          continue;
+        }
       }
 
       const shipment = await ShipmentModel.findOne({ orderId: vendorOrder.parentOrderId }).select(
@@ -171,16 +192,20 @@ export const walletService = {
         continue;
       }
 
-      const holdUntil = new Date(shipment.deliveredAt.getTime() + holdDays * 24 * 60 * 60 * 1000);
+      if (!bypassHoldDays) {
+        const holdUntil = new Date(shipment.deliveredAt.getTime() + holdDays * 24 * 60 * 60 * 1000);
 
-      if (holdUntil.getTime() > Date.now()) {
-        continue;
+        if (holdUntil.getTime() > Date.now()) {
+          skippedHeld += 1;
+          continue;
+        }
       }
 
       const releaseKey = `vendorOrder:${String(vendorOrder._id)}:release`;
       const existing = await LedgerEntryModel.findOne({ idempotencyKey: releaseKey }).select('_id');
 
       if (existing) {
+        skippedAlreadyReleased += 1;
         continue;
       }
 
@@ -201,6 +226,7 @@ export const walletService = {
             amount,
             account: 'pending',
             idempotencyKey: releaseKey,
+            note,
           },
           {
             vendorUserId: vendorOrder.vendorUserId,
@@ -211,14 +237,57 @@ export const walletService = {
             amount,
             account: 'available',
             idempotencyKey: `${releaseKey}:credit`,
+            note,
           },
         ]);
+        releasedCount += 1;
+        releasedAmount = money(releasedAmount + amount);
       } catch (error) {
         if (!isDuplicateKeyError(error)) {
           throw error;
         }
+        skippedAlreadyReleased += 1;
       }
     }
+
+    return {
+      releasedCount,
+      releasedAmount,
+      skippedHeld,
+      skippedPayment,
+      skippedAlreadyReleased,
+    };
+  },
+
+  async adminReleaseStoreSettlement(
+    storeId: string,
+    input: { force?: boolean; note?: string } = {},
+  ) {
+    const force = input.force === true;
+    const note =
+      input.note?.trim() ||
+      (force
+        ? 'Admin force release: hold and payment checks bypassed'
+        : 'Admin early release: settlement hold bypassed');
+
+    const result = await this.releaseEligibleForStore(storeId, {
+      bypassHoldDays: true,
+      bypassPaymentChecks: force,
+      note,
+    });
+
+    const [pendingSettlement, availableBalance] = await Promise.all([
+      this.sumAccount(storeId, 'pending'),
+      this.sumAccount(storeId, 'available'),
+    ]);
+
+    return {
+      storeId,
+      ...result,
+      pendingSettlement,
+      availableBalance,
+      force,
+    };
   },
 
   async getStoreBalances(storeId: string) {

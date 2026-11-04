@@ -96,4 +96,27 @@ export const commissionAdminService = {
 
     return { items, page, limit, total };
   },
+
+  async releaseStoreSettlement(storeId: string, input: { force?: boolean; note?: string } = {}) {
+    if (!Types.ObjectId.isValid(storeId)) {
+      throw AppError.notFound('Store not found');
+    }
+
+    const store = await StoreModel.findById(storeId).select('_id name isActive');
+
+    if (!store) {
+      throw AppError.notFound('Store not found');
+    }
+
+    if (!store.isActive) {
+      throw AppError.validation('Cannot release settlement for an inactive store');
+    }
+
+    const result = await walletService.adminReleaseStoreSettlement(storeId, input);
+
+    return {
+      ...result,
+      storeName: store.name,
+    };
+  },
 };

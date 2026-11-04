@@ -27,6 +27,7 @@ import type {
   ListVendorApplicationsQuery,
   ReviewVendorApplicationInput,
   SaveVendorApplicationInput,
+  UpdateVendorBusinessRecordsInput,
   VendorApplicationNoteInput,
 } from './vendor-application.validator';
 
@@ -666,6 +667,33 @@ export const vendorApplicationService = {
     await saveApplication(application);
 
     return { application: toDto(application), created };
+  },
+
+  async updateMineBusinessRecords(userId: string, input: UpdateVendorBusinessRecordsInput) {
+    const user = await UserModel.findById(userId).select('role status');
+
+    if (!user) {
+      throw AppError.unauthorized();
+    }
+
+    if (user.status !== 'active') {
+      throw AppError.forbidden('Your account is suspended');
+    }
+
+    if (user.role !== 'vendor') {
+      throw AppError.forbidden('Only approved vendors can update business records');
+    }
+
+    const application = await findOwn(userId);
+
+    if (application.status !== 'approved') {
+      throw AppError.conflict('Business records can only be updated after approval');
+    }
+
+    await applyPatch(application, { business: input });
+    await saveApplication(application);
+
+    return toDto(application);
   },
 
   async submitMine(userId: string) {

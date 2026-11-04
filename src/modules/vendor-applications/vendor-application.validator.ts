@@ -131,6 +131,17 @@ export const updateVendorApplicationSchema = applicationFields.refine(
   { message: 'At least one field is required' },
 );
 
+export const updateVendorBusinessRecordsSchema = z
+  .object({
+    tradeLicense: tradeLicenseSchema.nullable().optional(),
+    tax: taxSchema.nullable().optional(),
+    address: addressSchema.optional(),
+  })
+  .strict()
+  .refine((value) => Object.values(value).some((field) => field !== undefined), {
+    message: 'At least one field is required',
+  });
+
 const booleanQuery = z.enum(['true', 'false']).transform((value) => value === 'true');
 
 export const listVendorApplicationsQuerySchema = z.object({
@@ -162,6 +173,7 @@ export const vendorApplicationNoteSchema = z
   .strict();
 
 export type SaveVendorApplicationInput = z.infer<typeof updateVendorApplicationSchema>;
+export type UpdateVendorBusinessRecordsInput = z.infer<typeof updateVendorBusinessRecordsSchema>;
 export type ListVendorApplicationsQuery = z.infer<typeof listVendorApplicationsQuerySchema>;
 export type ReviewVendorApplicationInput = z.infer<typeof reviewVendorApplicationSchema>;
 export type VendorApplicationNoteInput = z.infer<typeof vendorApplicationNoteSchema>;
