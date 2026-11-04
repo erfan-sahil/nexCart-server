@@ -97,7 +97,10 @@ export const commissionAdminService = {
     return { items, page, limit, total };
   },
 
-  async releaseStoreSettlement(storeId: string, input: { force?: boolean; note?: string } = {}) {
+  async releaseStoreSettlement(
+    storeId: string,
+    input: { force?: boolean; amount?: number; note?: string } = {},
+  ) {
     if (!Types.ObjectId.isValid(storeId)) {
       throw AppError.notFound('Store not found');
     }

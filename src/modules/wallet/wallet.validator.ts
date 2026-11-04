@@ -23,6 +23,7 @@ export const storeCommissionBodySchema = z.object({
 
 export const releaseStoreSettlementBodySchema = z.object({
   force: z.boolean().optional().default(false),
+  amount: z.number().positive().max(100_000_000).optional(),
   note: z.string().trim().max(500).optional(),
 });
 
