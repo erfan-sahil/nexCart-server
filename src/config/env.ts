@@ -32,7 +32,10 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   TRUST_PROXY: booleanFromString,
-  MONGODB_URI: z.string().min(1).default('mongodb://127.0.0.1:27017/nexcart'),
+  MONGODB_URI: z
+    .string()
+    .min(1)
+    .default('mongodb://127.0.0.1:27017/nexcart?replicaSet=rs0&directConnection=true'),
   REDIS_URL: z.string().min(1).default('redis://127.0.0.1:6379'),
   JWT_ACCESS_SECRET: z.string().min(32).default(DEV_JWT_ACCESS_SECRET),
   JWT_REFRESH_SECRET: z.string().min(32).default(DEV_JWT_REFRESH_SECRET),

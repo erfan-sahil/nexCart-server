@@ -2,7 +2,7 @@ FROM node:20-bookworm-slim AS deps
 WORKDIR /app
 ENV HUSKY=0
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci --ignore-scripts && npm rebuild sharp
 
 # Local development. Source is bind-mounted at runtime and nodemon restarts on change.
 FROM deps AS dev
@@ -24,7 +24,7 @@ FROM node:20-bookworm-slim AS prod-deps
 WORKDIR /app
 ENV HUSKY=0
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+RUN npm ci --omit=dev --ignore-scripts && npm rebuild sharp && npm cache clean --force
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
