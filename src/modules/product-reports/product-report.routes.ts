@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { requireAnyPermissions, requirePermissions } from '../../common/middleware/authorize';
+import { requirePermissions } from '../../common/middleware/authorize';
 import { authenticate } from '../../common/middleware/authenticate';
 import { validate } from '../../common/middleware/validate';
 import { productReportController, productReportPermissions } from './product-report.controller';
@@ -32,7 +32,7 @@ export const productReportInboxRouter = Router();
 
 productReportInboxRouter.get(
   '/',
-  ...requireAnyPermissions(...productReportPermissions.list),
+  ...requirePermissions(productReportPermissions.list),
   validate({ query: listProductReportsQuerySchema }),
   productReportController.list,
 );

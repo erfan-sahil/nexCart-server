@@ -26,7 +26,6 @@ export const Permission = {
   vendorShipping: 'vendor:shipping',
   vendorCoupons: 'vendor:coupons',
   vendorAnalytics: 'vendor:analytics',
-  vendorProductReports: 'vendor:product-reports',
   vendorReviews: 'vendor:reviews',
 
   customerBrowseCategories: 'customer:browse-categories',
@@ -74,7 +73,6 @@ const VENDOR_PERMISSIONS = [
   Permission.vendorShipping,
   Permission.vendorCoupons,
   Permission.vendorAnalytics,
-  Permission.vendorProductReports,
   Permission.vendorReviews,
 ] as const satisfies readonly Permission[];
 
