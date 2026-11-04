@@ -1,1 +1,1 @@
-export { productReviewRouter } from './review.routes';
+export { adminReviewRouter, productReviewRouter, vendorReviewRouter } from './review.routes';

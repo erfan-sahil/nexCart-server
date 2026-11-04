@@ -48,3 +48,28 @@ export type ReviewListPayload = {
 export type ReplyListPayload = {
   replies: ReviewReplyDto[];
 };
+
+export type ReviewProductRefDto = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+export type ReviewStoreRefDto = {
+  id: string;
+  name: string;
+};
+
+export type ReviewManagementItemDto = {
+  id: string;
+  rating: number;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  author: ReviewAuthorDto;
+  product: ReviewProductRefDto;
+  store: ReviewStoreRefDto;
+  replyCount: number;
+  replies: ReviewReplyDto[];
+  hasVendorReply: boolean;
+};

@@ -54,8 +54,22 @@ export const createReplySchema = z.object({
   body: reviewBodySchema,
 });
 
+export const listManagementReviewsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(DEFAULT_REVIEW_PAGE),
+  limit: z.coerce.number().int().min(1).max(MAX_REVIEW_LIMIT).default(DEFAULT_REVIEW_LIMIT),
+  rating: z.coerce.number().int().min(1).max(5).optional(),
+  productId: objectIdSchema.optional(),
+  storeId: objectIdSchema.optional(),
+  search: z.string().trim().max(120).optional(),
+});
+
+export const managementReviewIdParamsSchema = z.object({
+  reviewId: objectIdSchema,
+});
+
 export type ListReviewsQuery = z.infer<typeof listReviewsQuerySchema>;
 export type ListRepliesQuery = z.infer<typeof listRepliesQuerySchema>;
 export type CreateReviewInput = z.infer<typeof createReviewSchema>;
 export type UpdateReviewInput = z.infer<typeof updateReviewSchema>;
 export type CreateReplyInput = z.infer<typeof createReplySchema>;
+export type ListManagementReviewsQuery = z.infer<typeof listManagementReviewsQuerySchema>;

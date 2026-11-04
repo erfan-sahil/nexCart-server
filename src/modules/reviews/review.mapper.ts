@@ -1,11 +1,14 @@
 import type { Types } from 'mongoose';
 
+import { ProductModel } from '../products/product.model';
+import { StoreModel } from '../stores/store.model';
 import { UserModel } from '../users/user.model';
 import type { Review } from './review.model';
 import type {
   ProductReviewDto,
   RatingDistributionDto,
   ReviewAuthorDto,
+  ReviewManagementItemDto,
   ReviewReplyDto,
   ReviewSummaryDto,
 } from './types';
@@ -15,6 +18,20 @@ type AuthorRow = {
   firstName: string;
   lastName: string;
   avatarUrl?: string;
+};
+
+type ProductRow = {
+  _id: Types.ObjectId;
+  name: string;
+  slug: string;
+  storeId: Types.ObjectId;
+  userId?: Types.ObjectId;
+};
+
+type StoreRow = {
+  _id: Types.ObjectId;
+  name: string;
+  userId?: Types.ObjectId;
 };
 
 type ReviewLean = Pick<
@@ -156,4 +173,73 @@ export const mapReplies = async (replies: ReviewLean[], viewerId?: string) => {
   const authors = await loadAuthors(replies.map((reply) => String(reply.authorId)));
 
   return replies.map((reply) => toReplyDto(reply, authors, viewerId));
+};
+
+export const mapManagementReviews = async (
+  reviews: ReviewLean[],
+  replyCounts: Map<string, number>,
+  repliesByReview: Map<string, ReviewLean[]>,
+  viewerId?: string,
+): Promise<ReviewManagementItemDto[]> => {
+  if (reviews.length === 0) {
+    return [];
+  }
+
+  const productIds = [...new Set(reviews.map((review) => String(review.productId)))];
+  const products = await ProductModel.find({ _id: { $in: productIds } })
+    .select('name slug storeId')
+    .lean<ProductRow[]>();
+
+  const storeIds = [...new Set(products.map((product) => String(product.storeId)))];
+  const stores = await StoreModel.find({ _id: { $in: storeIds } })
+    .select('name userId')
+    .lean<StoreRow[]>();
+
+  const productMap = new Map(products.map((row) => [String(row._id), row]));
+  const storeMap = new Map(stores.map((row) => [String(row._id), row]));
+  const vendorUserIds = new Set(
+    stores.map((store) => (store.userId ? String(store.userId) : '')).filter(Boolean),
+  );
+
+  const authorIds = [
+    ...reviews.map((review) => String(review.authorId)),
+    ...[...repliesByReview.values()].flat().map((reply) => String(reply.authorId)),
+  ];
+  const authors = await loadAuthors(authorIds);
+
+  return reviews.map((review) => {
+    const product = productMap.get(String(review.productId));
+    const store = product ? storeMap.get(String(product.storeId)) : undefined;
+    const replies = repliesByReview.get(String(review._id)) ?? [];
+    const replyCount = replyCounts.get(String(review._id)) ?? 0;
+    const mappedReplies = replies.map((reply) => toReplyDto(reply, authors, viewerId));
+    const author =
+      authors.get(String(review.authorId)) ??
+      ({
+        id: String(review.authorId),
+        displayName: 'Customer',
+        avatarUrl: '',
+      } satisfies ReviewAuthorDto);
+
+    return {
+      id: String(review._id),
+      rating: review.rating ?? 0,
+      body: review.body,
+      createdAt: review.createdAt.toISOString(),
+      updatedAt: review.updatedAt.toISOString(),
+      author,
+      product: {
+        id: String(review.productId),
+        name: product?.name ?? 'Unknown product',
+        slug: product?.slug ?? '',
+      },
+      store: {
+        id: product ? String(product.storeId) : '',
+        name: store?.name ?? 'Unknown store',
+      },
+      replyCount,
+      replies: mappedReplies,
+      hasVendorReply: mappedReplies.some((reply) => vendorUserIds.has(reply.author.id)),
+    };
+  });
 };
