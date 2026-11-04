@@ -6,6 +6,7 @@ import { StoreModel } from '../stores/store.model';
 import { OrderModel } from '../orders/order.model';
 import { VendorOrderModel } from '../orders/vendor-order.model';
 import { ShipmentModel } from '../fulfillment/shipment.model';
+import { WithdrawalModel } from '../withdrawals/withdrawal.model';
 import { LedgerEntryModel } from './ledger-entry.model';
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
@@ -389,15 +390,55 @@ export const walletService = {
     };
   },
 
+  /**
+   * Withdrawals admin has accepted (approved → processing → paid).
+   * Pending requests reserve available balance but are not counted here.
+   */
+  async getWithdrawnBalance(storeId: string) {
+    const rows = await WithdrawalModel.aggregate<{ total: number }>([
+      {
+        $match: {
+          storeId: new Types.ObjectId(storeId),
+          status: { $in: ['approved', 'processing', 'paid'] },
+        },
+      },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+
+    return money(Math.max(0, rows[0]?.total ?? 0));
+  },
+
+  /** Funds reserved on available while a withdrawal awaits admin review. */
+  async getReservedWithdrawalBalance(storeId: string) {
+    const rows = await WithdrawalModel.aggregate<{ total: number }>([
+      {
+        $match: {
+          storeId: new Types.ObjectId(storeId),
+          status: 'pending',
+        },
+      },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+
+    return money(Math.max(0, rows[0]?.total ?? 0));
+  },
+
   async getStoreBalances(storeId: string) {
     await this.releaseEligibleForStore(storeId);
 
-    const [pending, available] = await Promise.all([
+    const [pending, available, withdrawn, reservedWithdrawals] = await Promise.all([
       this.sumAccount(storeId, 'pending'),
       this.sumAccount(storeId, 'available'),
+      this.getWithdrawnBalance(storeId),
+      this.getReservedWithdrawalBalance(storeId),
     ]);
 
-    return { pendingSettlement: pending, availableBalance: available };
+    return {
+      pendingSettlement: pending,
+      availableBalance: available,
+      withdrawnBalance: withdrawn,
+      totalBalance: money(pending + available + withdrawn + reservedWithdrawals),
+    };
   },
 
   async listForStore(storeId: string, page: number, limit: number) {

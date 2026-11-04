@@ -34,7 +34,6 @@ const getVendorBalances = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, {
     storeId,
     ...balances,
-    withdrawnBalance: 0,
   });
 });
 
