@@ -1,16 +1,76 @@
+import type { InboundBatch } from './inbound-batch.model';
 import type { OrderActivity } from './order-activity.model';
 import type { Order } from './order.model';
+import type { RejectReturn } from './reject-return.model';
 import type { VendorOrder } from './vendor-order.model';
+import type { Shipment } from '../fulfillment/shipment.model';
 import { defaultFulfillmentStatus, projectCustomerStatus } from './order-status';
 import { projectCustomerStatusWithVendorOrders } from './customer-order-status.service';
 import { toOrderDto } from './order.mapper';
 import type {
   AdminOrderDetailDto,
   AdminOrderListItemDto,
+  AdminShipmentDto,
+  AdminVendorOrderDto,
+  InboundBatchDto,
   OrderActivityDto,
+  RejectReturnDto,
   VendorOrderDto,
   VendorOrderSummaryDto,
 } from './vendor-order.types';
+
+export const toInboundBatchDto = (batch: InboundBatch): InboundBatchDto => ({
+  id: String(batch._id),
+  sequence: batch.sequence,
+  status: batch.status,
+  lines: batch.lines.map((line) => ({
+    variantId: String(line.variantId),
+    sku: line.sku,
+    productName: line.productName,
+    sentQty: line.sentQty,
+    acceptedQty: line.acceptedQty,
+    rejectedQty: line.rejectedQty,
+    rejectionReason: line.rejectionReason ?? null,
+    rejectionNote: line.rejectionNote ?? '',
+  })),
+  dispatchedAt: batch.dispatchedAt.toISOString(),
+  receivedAt: batch.receivedAt?.toISOString() ?? null,
+  inspectedAt: batch.inspectedAt?.toISOString() ?? null,
+});
+
+export const toRejectReturnDto = (ret: RejectReturn): RejectReturnDto => ({
+  id: String(ret._id),
+  inboundBatchId: String(ret.inboundBatchId),
+  status: ret.status,
+  lines: ret.lines.map((line) => ({
+    variantId: String(line.variantId),
+    sku: line.sku,
+    quantity: line.quantity,
+    rejectionReason: line.rejectionReason,
+    rejectionNote: line.rejectionNote ?? '',
+  })),
+  sentToVendorAt: ret.sentToVendorAt?.toISOString() ?? null,
+  receivedByVendorAt: ret.receivedByVendorAt?.toISOString() ?? null,
+});
+
+export const toAdminShipmentDto = (row: Shipment): AdminShipmentDto => ({
+  status: row.status,
+  carrier: row.carrier ?? '',
+  trackingNumber: row.trackingNumber ?? '',
+  packedAt: row.packedAt?.toISOString() ?? null,
+  shippedAt: row.shippedAt?.toISOString() ?? null,
+  deliveredAt: row.deliveredAt?.toISOString() ?? null,
+});
+
+export const toAdminVendorOrderDto = (
+  row: VendorOrder,
+  batches: InboundBatch[],
+  rejectReturns: RejectReturn[],
+): AdminVendorOrderDto => ({
+  ...toVendorOrderDto(row),
+  inboundBatches: batches.map(toInboundBatchDto),
+  rejectReturns: rejectReturns.map(toRejectReturnDto),
+});
 
 export const toVendorOrderDto = (row: VendorOrder): VendorOrderDto => ({
   id: String(row._id),
@@ -75,11 +135,15 @@ export const toAdminOrderListItem = (order: Order): AdminOrderListItemDto => ({
 
 export const toAdminOrderDetail = (
   order: Order,
-  vendorOrders: VendorOrder[],
+  vendorOrders: AdminVendorOrderDto[],
   activity: OrderActivityDto[],
-  shipmentStatus?: string | null,
+  shipment: AdminShipmentDto | null,
 ): AdminOrderDetailDto => {
-  const customerStatus = projectCustomerStatusWithVendorOrders(order, vendorOrders, shipmentStatus);
+  const customerStatus = projectCustomerStatusWithVendorOrders(
+    order,
+    vendorOrders,
+    shipment?.status ?? null,
+  );
 
   return {
     ...toAdminOrderListItem(order),
@@ -101,7 +165,8 @@ export const toAdminOrderDetail = (
       codCollectionStatus: order.codCollectionStatus,
     },
     totals: toOrderDto(order).totals,
-    vendorOrders: vendorOrders.map(toVendorOrderDto),
+    shipment,
+    vendorOrders,
     activity,
     canCancel: false,
   };

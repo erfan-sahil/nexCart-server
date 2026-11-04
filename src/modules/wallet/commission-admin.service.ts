@@ -64,18 +64,29 @@ export const commissionAdminService = {
     const skip = (page - 1) * limit;
     const filter = { isActive: true };
 
-    const [stores, total] = await Promise.all([
-      StoreModel.find(filter).sort({ name: 1 }).skip(skip).limit(limit).select('_id name'),
+    const [stores, total, settings] = await Promise.all([
+      StoreModel.find(filter)
+        .sort({ name: 1 })
+        .skip(skip)
+        .limit(limit)
+        .select('_id name commissionRate'),
       StoreModel.countDocuments(filter),
+      SiteSettingsModel.findOne({ key: SITE_SETTINGS_KEY }).select('defaultCommissionRate'),
     ]);
+
+    const defaultCommissionRate = settings?.defaultCommissionRate ?? 10;
 
     const items = await Promise.all(
       stores.map(async (store) => {
         const balances = await walletService.getStoreBalances(String(store._id));
+        const hasOverride = store.commissionRate !== null && store.commissionRate !== undefined;
 
         return {
           storeId: String(store._id),
           storeName: store.name,
+          commissionRate: hasOverride ? store.commissionRate : null,
+          effectiveCommissionRate: hasOverride ? store.commissionRate : defaultCommissionRate,
+          hasOverride,
           pendingSettlement: balances.pendingSettlement,
           availableBalance: balances.availableBalance,
           withdrawnBalance: money(0),

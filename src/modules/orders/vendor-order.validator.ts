@@ -13,6 +13,14 @@ export const vendorOrderIdParamsSchema = z.object({
   vendorOrderId: z.string().min(1),
 });
 
+export const listAdminVendorOrdersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().max(80).optional(),
+  status: z.enum(VENDOR_ORDER_STATUSES).optional(),
+  sort: z.enum(['createdAt', '-createdAt', 'updatedAt', '-updatedAt']).default('-updatedAt'),
+});
+
 export const listAdminOrdersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -106,6 +114,7 @@ export const codRemittanceSchema = z.object({
 });
 
 export type ListVendorOrdersQuery = z.infer<typeof listVendorOrdersQuerySchema>;
+export type ListAdminVendorOrdersQuery = z.infer<typeof listAdminVendorOrdersQuerySchema>;
 export type ListAdminOrdersQuery = z.infer<typeof listAdminOrdersQuerySchema>;
 export type UpdateVendorOrderStatusBody = z.infer<typeof updateVendorOrderStatusSchema>;
 export type UpdateAdminVendorOrderStatusBody = z.infer<typeof updateAdminVendorOrderStatusSchema>;
