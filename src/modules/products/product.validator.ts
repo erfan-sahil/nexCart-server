@@ -243,6 +243,7 @@ export const listMineProductsQuerySchema = z.object({
   status: z.enum(PRODUCT_STATUSES).optional(),
   approvalStatus: z.enum(PRODUCT_APPROVAL_STATUSES).optional(),
   isPublished: booleanQuery.optional(),
+  hasDiscount: booleanQuery.optional(),
 });
 
 export const listManageProductsQuerySchema = z.object({
