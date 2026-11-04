@@ -3,11 +3,12 @@ import type { Request, Response } from 'express';
 import { Permission } from '../../common/constants/permissions';
 import { asyncHandler } from '../../common/http/asyncHandler';
 import { AppError } from '../../common/errors/AppError';
-import { sendCreated, sendSuccess } from '../../common/http/sendResponse';
+import { sendCreated, sendPaginated, sendSuccess } from '../../common/http/sendResponse';
 import { reviewService } from './review.service';
 import type {
   CreateReplyInput,
   CreateReviewInput,
+  ListManagementReviewsQuery,
   ListRepliesQuery,
   ListReviewsQuery,
   UpdateReviewInput,
@@ -102,6 +103,45 @@ const createReply = asyncHandler(async (req: Request, res: Response) => {
   sendCreated(res, result, 'Reply posted');
 });
 
+const listAdmin = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query as unknown as ListManagementReviewsQuery;
+  const result = await reviewService.listForAdmin(query, actorId(req));
+
+  sendPaginated(
+    res,
+    result.items,
+    {
+      page: result.page,
+      limit: result.limit,
+      total: result.total,
+    },
+    'Reviews',
+  );
+});
+
+const listVendor = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query as unknown as ListManagementReviewsQuery;
+  const result = await reviewService.listForVendor(actorId(req), query);
+
+  sendPaginated(
+    res,
+    result.items,
+    {
+      page: result.page,
+      limit: result.limit,
+      total: result.total,
+    },
+    'Reviews',
+  );
+});
+
+const removeAdmin = asyncHandler(async (req: Request, res: Response) => {
+  const reviewId = param(req.params.reviewId);
+  const result = await reviewService.removeByAdmin(reviewId);
+
+  sendSuccess(res, result, { message: 'Review deleted' });
+});
+
 export const reviewController = {
   list,
   listReplies,
@@ -109,8 +149,13 @@ export const reviewController = {
   update,
   remove,
   createReply,
+  listAdmin,
+  listVendor,
+  removeAdmin,
 };
 
 export const reviewPermissions = {
   create: Permission.customerReviews,
+  admin: Permission.adminReviews,
+  vendor: Permission.vendorReviews,
 };

@@ -73,6 +73,6 @@ export const productReportController = {
 };
 
 export const productReportPermissions = {
-  list: [Permission.adminProductReports, Permission.vendorProductReports] as const,
+  list: Permission.adminProductReports,
   updateStatus: Permission.adminProductReports,
 };

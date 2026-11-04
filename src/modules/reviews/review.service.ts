@@ -7,15 +7,27 @@ import { StoreModel } from '../stores/store.model';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import { INITIAL_REPLIES_PER_REVIEW } from './constants';
-import { emptyDistribution, mapReplies, mapReviewTree, toReviewSummary } from './review.mapper';
+import {
+  emptyDistribution,
+  mapManagementReviews,
+  mapReplies,
+  mapReviewTree,
+  toReviewSummary,
+} from './review.mapper';
 import type {
   CreateReplyInput,
   CreateReviewInput,
+  ListManagementReviewsQuery,
   ListRepliesQuery,
   ListReviewsQuery,
   UpdateReviewInput,
 } from './review.validator';
-import type { ProductReviewDto, ReplyListPayload, ReviewListPayload } from './types';
+import type {
+  ProductReviewDto,
+  ReplyListPayload,
+  ReviewListPayload,
+  ReviewManagementItemDto,
+} from './types';
 
 const isStoreListed = (store: { isActive: boolean; suspendedAt?: Date | null } | null) =>
   Boolean(store?.isActive && !store.suspendedAt);
@@ -108,6 +120,101 @@ const assertListedProduct = async (productId: string) => {
   }
 
   return product;
+};
+
+const resolveVendorStoreId = async (userId: string) => {
+  const store = await StoreModel.findOne({ userId }).select('_id').lean();
+
+  if (!store) {
+    return null;
+  }
+
+  return String(store._id);
+};
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const productIdsForStore = async (storeId: string) => {
+  const products = await ProductModel.find({ storeId }).select('_id').lean();
+  return products.map((product) => String(product._id));
+};
+
+const productIdsMatchingSearch = async (search: string, storeId?: string) => {
+  const filter: Record<string, unknown> = {
+    name: { $regex: escapeRegex(search), $options: 'i' },
+  };
+
+  if (storeId) {
+    filter.storeId = toObjectId(storeId);
+  }
+
+  const products = await ProductModel.find(filter).select('_id').lean();
+  return products.map((product) => String(product._id));
+};
+
+const buildManagementFilter = async (
+  query: ListManagementReviewsQuery,
+  options: { storeId?: string | null } = {},
+) => {
+  const filter: Record<string, unknown> = { parentId: null };
+
+  if (query.rating !== undefined) {
+    filter.rating = query.rating;
+  }
+
+  if (options.storeId === null) {
+    return { filter: null as Record<string, unknown> | null };
+  }
+
+  let scopedProductIds: string[] | undefined;
+
+  if (options.storeId) {
+    scopedProductIds = await productIdsForStore(options.storeId);
+
+    if (scopedProductIds.length === 0) {
+      return { filter: null };
+    }
+  }
+
+  if (query.storeId && !options.storeId) {
+    const storeProductIds = await productIdsForStore(query.storeId);
+
+    if (storeProductIds.length === 0) {
+      return { filter: null };
+    }
+
+    scopedProductIds = storeProductIds;
+  }
+
+  if (query.productId) {
+    if (scopedProductIds && !scopedProductIds.includes(query.productId)) {
+      return { filter: null };
+    }
+
+    filter.productId = toObjectId(query.productId);
+  } else if (scopedProductIds) {
+    filter.productId = { $in: scopedProductIds.map(toObjectId) };
+  }
+
+  if (query.search) {
+    const matchedProductIds = await productIdsMatchingSearch(
+      query.search,
+      options.storeId ?? query.storeId,
+    );
+    const bodyClause = { body: { $regex: escapeRegex(query.search), $options: 'i' } };
+    const productClause =
+      matchedProductIds.length > 0
+        ? { productId: { $in: matchedProductIds.map(toObjectId) } }
+        : null;
+
+    if (productClause) {
+      filter.$or = [bodyClause, productClause];
+    } else {
+      Object.assign(filter, bodyClause);
+    }
+  }
+
+  return { filter };
 };
 
 const loadTopLevelReview = async (productId: string, reviewId: string) => {
@@ -380,7 +487,22 @@ const createReply = async (
   userId: string,
   input: CreateReplyInput,
 ) => {
-  await assertListedProduct(productId);
+  const vendorStoreId = await resolveVendorStoreId(userId);
+
+  if (vendorStoreId) {
+    const product = await ProductModel.findById(productId).select('storeId').lean();
+
+    if (!product) {
+      throw AppError.notFound('Product not found');
+    }
+
+    if (String(product.storeId) !== vendorStoreId) {
+      throw AppError.forbidden('You can only reply to reviews on your products');
+    }
+  } else {
+    await assertListedProduct(productId);
+  }
+
   await loadTopLevelReview(productId, reviewId);
 
   try {
@@ -404,6 +526,77 @@ const createReply = async (
   }
 };
 
+const listManagement = async (
+  query: ListManagementReviewsQuery,
+  viewerId: string,
+  options: { storeId?: string | null } = {},
+): Promise<{ items: ReviewManagementItemDto[]; total: number; page: number; limit: number }> => {
+  const { filter } = await buildManagementFilter(query, options);
+
+  if (!filter) {
+    return { items: [], total: 0, page: query.page, limit: query.limit };
+  }
+
+  const skip = (query.page - 1) * query.limit;
+
+  const [total, reviews] = await Promise.all([
+    ReviewModel.countDocuments(filter),
+    ReviewModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(query.limit).lean(),
+  ]);
+
+  const reviewIds = reviews.map((review) => String(review._id));
+  const [replyCounts, repliesByReview] = await Promise.all([
+    replyCountsFor(reviewIds),
+    repliesForReviews(reviewIds, INITIAL_REPLIES_PER_REVIEW),
+  ]);
+
+  return {
+    items: await mapManagementReviews(reviews, replyCounts, repliesByReview, viewerId),
+    total,
+    page: query.page,
+    limit: query.limit,
+  };
+};
+
+const listForAdmin = async (query: ListManagementReviewsQuery, viewerId: string) =>
+  listManagement(query, viewerId);
+
+const listForVendor = async (
+  userId: string,
+  query: ListManagementReviewsQuery,
+): Promise<{ items: ReviewManagementItemDto[]; total: number; page: number; limit: number }> => {
+  const storeId = await resolveVendorStoreId(userId);
+
+  if (!storeId) {
+    return { items: [], total: 0, page: query.page, limit: query.limit };
+  }
+
+  return listManagement(query, userId, { storeId });
+};
+
+const removeByAdmin = async (reviewId: string) => {
+  const existing = await ReviewModel.findById(reviewId).lean();
+
+  if (!existing) {
+    throw AppError.notFound('Review not found');
+  }
+
+  if (existing.parentId) {
+    await ReviewModel.deleteOne({ _id: reviewId });
+    return { summary: null };
+  }
+
+  const productId = String(existing.productId);
+
+  await ReviewModel.deleteMany({
+    $or: [{ _id: reviewId }, { parentId: reviewId }],
+  });
+
+  const summary = await syncProductRatingSummary(productId);
+
+  return { summary };
+};
+
 export const reviewService = {
   list,
   listReplies,
@@ -411,4 +604,7 @@ export const reviewService = {
   update,
   remove,
   createReply,
+  listForAdmin,
+  listForVendor,
+  removeByAdmin,
 };

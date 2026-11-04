@@ -1,9 +1,10 @@
 import { Types } from 'mongoose';
+import { AppError } from '../../common/errors/AppError';
+import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import { SiteSettingsModel } from '../site-settings/site-settings.model';
 import { StoreModel } from '../stores/store.model';
 import { OrderModel } from '../orders/order.model';
 import { VendorOrderModel } from '../orders/vendor-order.model';
-import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import { ShipmentModel } from '../fulfillment/shipment.model';
 import { LedgerEntryModel } from './ledger-entry.model';
 
@@ -137,14 +138,62 @@ export const walletService = {
     return money(totals.credits - totals.debits);
   },
 
-  async releaseEligibleForStore(storeId: string) {
+  async getReleasedAmountForVendorOrder(vendorOrderId: Types.ObjectId | string) {
+    const rows = await LedgerEntryModel.aggregate<{ total: number }>([
+      {
+        $match: {
+          vendorOrderId: new Types.ObjectId(String(vendorOrderId)),
+          type: 'settlement_release',
+          account: 'pending',
+        },
+      },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+
+    return money(rows[0]?.total ?? 0);
+  },
+
+  async releaseEligibleForStore(
+    storeId: string,
+    options: {
+      bypassHoldDays?: boolean;
+      bypassPaymentChecks?: boolean;
+      maxAmount?: number;
+      note?: string;
+    } = {},
+  ) {
+    const bypassHoldDays = options.bypassHoldDays === true;
+    const bypassPaymentChecks = options.bypassPaymentChecks === true;
+    const note = options.note?.trim() ?? '';
+    const hasAmountCap = typeof options.maxAmount === 'number';
+    let remainingBudget = hasAmountCap ? money(options.maxAmount ?? 0) : null;
+
+    if (remainingBudget !== null && remainingBudget <= 0) {
+      return {
+        releasedCount: 0,
+        releasedAmount: 0,
+        skippedHeld: 0,
+        skippedPayment: 0,
+        skippedAlreadyReleased: 0,
+      };
+    }
+
     const completed = await VendorOrderModel.find({
       storeId,
       status: { $in: ['delivered', 'completed'] },
       vendorEarnings: { $gt: 0 },
-    }).select('_id vendorEarnings parentOrderId vendorUserId storeId');
+    }).select('_id vendorEarnings parentOrderId vendorUserId storeId createdAt');
 
     const { holdDays } = await commissionService.resolveRate(storeId);
+
+    const candidates: Array<{
+      vendorOrder: (typeof completed)[number];
+      deliveredAt: Date;
+    }> = [];
+
+    let skippedHeld = 0;
+    let skippedPayment = 0;
+    let skippedAlreadyReleased = 0;
 
     for (const vendorOrder of completed) {
       const parent = await OrderModel.findById(vendorOrder.parentOrderId).select(
@@ -155,12 +204,16 @@ export const walletService = {
         continue;
       }
 
-      if (parent.paymentMethod === 'prepaid' && parent.paymentStatus !== 'paid') {
-        continue;
-      }
+      if (!bypassPaymentChecks) {
+        if (parent.paymentMethod === 'prepaid' && parent.paymentStatus !== 'paid') {
+          skippedPayment += 1;
+          continue;
+        }
 
-      if (parent.paymentMethod === 'cod' && parent.codRemittanceStatus !== 'reconciled') {
-        continue;
+        if (parent.paymentMethod === 'cod' && parent.codRemittanceStatus !== 'reconciled') {
+          skippedPayment += 1;
+          continue;
+        }
       }
 
       const shipment = await ShipmentModel.findOne({ orderId: vendorOrder.parentOrderId }).select(
@@ -171,22 +224,60 @@ export const walletService = {
         continue;
       }
 
-      const holdUntil = new Date(shipment.deliveredAt.getTime() + holdDays * 24 * 60 * 60 * 1000);
+      if (!bypassHoldDays) {
+        const holdUntil = new Date(shipment.deliveredAt.getTime() + holdDays * 24 * 60 * 60 * 1000);
 
-      if (holdUntil.getTime() > Date.now()) {
+        if (holdUntil.getTime() > Date.now()) {
+          skippedHeld += 1;
+          continue;
+        }
+      }
+
+      candidates.push({ vendorOrder, deliveredAt: shipment.deliveredAt });
+    }
+
+    candidates.sort((a, b) => a.deliveredAt.getTime() - b.deliveredAt.getTime());
+
+    let releasedCount = 0;
+    let releasedAmount = 0;
+
+    for (const { vendorOrder } of candidates) {
+      if (remainingBudget !== null && remainingBudget <= 0) {
+        break;
+      }
+
+      const earnings = money(vendorOrder.vendorEarnings ?? 0);
+
+      if (earnings <= 0) {
         continue;
       }
 
-      const releaseKey = `vendorOrder:${String(vendorOrder._id)}:release`;
+      const alreadyReleased = await this.getReleasedAmountForVendorOrder(vendorOrder._id);
+      const remainingOnOrder = money(earnings - alreadyReleased);
+
+      if (remainingOnOrder <= 0) {
+        skippedAlreadyReleased += 1;
+        continue;
+      }
+
+      const amount =
+        remainingBudget === null
+          ? remainingOnOrder
+          : money(Math.min(remainingOnOrder, remainingBudget));
+
+      if (amount <= 0) {
+        continue;
+      }
+
+      const releaseKey =
+        alreadyReleased === 0 && amount === earnings
+          ? `vendorOrder:${String(vendorOrder._id)}:release`
+          : `vendorOrder:${String(vendorOrder._id)}:release:from:${alreadyReleased}:amt:${amount}`;
+
       const existing = await LedgerEntryModel.findOne({ idempotencyKey: releaseKey }).select('_id');
 
       if (existing) {
-        continue;
-      }
-
-      const amount = vendorOrder.vendorEarnings ?? 0;
-
-      if (amount <= 0) {
+        skippedAlreadyReleased += 1;
         continue;
       }
 
@@ -201,6 +292,7 @@ export const walletService = {
             amount,
             account: 'pending',
             idempotencyKey: releaseKey,
+            note,
           },
           {
             vendorUserId: vendorOrder.vendorUserId,
@@ -211,14 +303,90 @@ export const walletService = {
             amount,
             account: 'available',
             idempotencyKey: `${releaseKey}:credit`,
+            note,
           },
         ]);
+        releasedCount += 1;
+        releasedAmount = money(releasedAmount + amount);
+
+        if (remainingBudget !== null) {
+          remainingBudget = money(remainingBudget - amount);
+        }
       } catch (error) {
         if (!isDuplicateKeyError(error)) {
           throw error;
         }
+        skippedAlreadyReleased += 1;
       }
     }
+
+    return {
+      releasedCount,
+      releasedAmount,
+      skippedHeld,
+      skippedPayment,
+      skippedAlreadyReleased,
+    };
+  },
+
+  async adminReleaseStoreSettlement(
+    storeId: string,
+    input: { force?: boolean; amount?: number; note?: string } = {},
+  ) {
+    const force = input.force === true;
+    const hasAmount = typeof input.amount === 'number';
+    const amount = hasAmount ? money(input.amount ?? 0) : undefined;
+
+    if (hasAmount && (amount === undefined || amount <= 0)) {
+      throw AppError.validation('Release amount must be greater than zero');
+    }
+
+    const pendingSettlement = await this.sumAccount(storeId, 'pending');
+
+    if (hasAmount && amount !== undefined && amount > pendingSettlement) {
+      throw AppError.validation('Amount exceeds pending settlement');
+    }
+
+    const note =
+      input.note?.trim() ||
+      (force
+        ? hasAmount
+          ? `Admin force release of ${amount}`
+          : 'Admin force release: hold and payment checks bypassed'
+        : hasAmount
+          ? `Admin early release of ${amount}`
+          : 'Admin early release: settlement hold bypassed');
+
+    const result = await this.releaseEligibleForStore(storeId, {
+      bypassHoldDays: true,
+      bypassPaymentChecks: force,
+      maxAmount: amount,
+      note,
+    });
+
+    if (hasAmount && amount !== undefined && result.releasedAmount + 0.001 < amount) {
+      if (result.releasedAmount <= 0) {
+        throw AppError.validation(
+          force
+            ? 'No delivered order earnings available to release for this amount'
+            : 'Not enough eligible order earnings. Enable force release or wait for payment clearance.',
+        );
+      }
+    }
+
+    const [pendingAfter, availableBalance] = await Promise.all([
+      this.sumAccount(storeId, 'pending'),
+      this.sumAccount(storeId, 'available'),
+    ]);
+
+    return {
+      storeId,
+      ...result,
+      requestedAmount: amount ?? null,
+      pendingSettlement: pendingAfter,
+      availableBalance,
+      force,
+    };
   },
 
   async getStoreBalances(storeId: string) {

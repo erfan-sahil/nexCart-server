@@ -9,6 +9,7 @@ export const Permission = {
   adminVendorApprovals: 'admin:vendor-approvals',
   adminProductModeration: 'admin:product-moderation',
   adminProductReports: 'admin:product-reports',
+  adminReviews: 'admin:reviews',
   adminOrders: 'admin:orders',
   adminCoupons: 'admin:coupons',
   adminPromotions: 'admin:promotions',
@@ -25,7 +26,7 @@ export const Permission = {
   vendorShipping: 'vendor:shipping',
   vendorCoupons: 'vendor:coupons',
   vendorAnalytics: 'vendor:analytics',
-  vendorProductReports: 'vendor:product-reports',
+  vendorReviews: 'vendor:reviews',
 
   customerBrowseCategories: 'customer:browse-categories',
   customerSearch: 'customer:search',
@@ -53,6 +54,7 @@ const ADMIN_PERMISSIONS = [
   Permission.adminVendorApprovals,
   Permission.adminProductModeration,
   Permission.adminProductReports,
+  Permission.adminReviews,
   Permission.adminOrders,
   Permission.adminCoupons,
   Permission.adminPromotions,
@@ -71,7 +73,7 @@ const VENDOR_PERMISSIONS = [
   Permission.vendorShipping,
   Permission.vendorCoupons,
   Permission.vendorAnalytics,
-  Permission.vendorProductReports,
+  Permission.vendorReviews,
 ] as const satisfies readonly Permission[];
 
 const CUSTOMER_PERMISSIONS = [

@@ -7,14 +7,41 @@ import { reviewController, reviewPermissions } from './review.controller';
 import {
   createReplySchema,
   createReviewSchema,
+  listManagementReviewsQuerySchema,
   listRepliesQuerySchema,
   listReviewsQuerySchema,
+  managementReviewIdParamsSchema,
   productIdParamsSchema,
   reviewIdParamsSchema,
   updateReviewSchema,
 } from './review.validator';
 
 export const productReviewRouter = Router({ mergeParams: false });
+
+export const adminReviewRouter = Router();
+
+adminReviewRouter.get(
+  '/',
+  ...requirePermissions(reviewPermissions.admin),
+  validate({ query: listManagementReviewsQuerySchema }),
+  reviewController.listAdmin,
+);
+
+adminReviewRouter.delete(
+  '/:reviewId',
+  ...requirePermissions(reviewPermissions.admin),
+  validate({ params: managementReviewIdParamsSchema }),
+  reviewController.removeAdmin,
+);
+
+export const vendorReviewRouter = Router();
+
+vendorReviewRouter.get(
+  '/',
+  ...requirePermissions(reviewPermissions.vendor),
+  validate({ query: listManagementReviewsQuerySchema }),
+  reviewController.listVendor,
+);
 
 productReviewRouter.get(
   '/:productId/reviews',

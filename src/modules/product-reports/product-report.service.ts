@@ -1,6 +1,3 @@
-import { Types } from 'mongoose';
-
-import type { UserRole } from '../auth/types';
 import { ProductReportModel } from './product-report.model';
 import { ProductModel } from '../products/product.model';
 import { StoreModel } from '../stores/store.model';
@@ -23,8 +20,6 @@ const isProductListed = (product: {
   isPublished: boolean;
 }) => product.approvalStatus === 'approved' && product.status === 'active' && product.isPublished;
 
-const toObjectId = (value: string) => new Types.ObjectId(value);
-
 const assertListedProduct = async (productId: string) => {
   const product = await ProductModel.findById(productId)
     .select('approvalStatus status isPublished storeId name slug')
@@ -41,16 +36,6 @@ const assertListedProduct = async (productId: string) => {
   }
 
   return product;
-};
-
-const resolveVendorStoreId = async (userId: string) => {
-  const store = await StoreModel.findOne({ userId }).select('_id').lean();
-
-  if (!store) {
-    return null;
-  }
-
-  return String(store._id);
 };
 
 const create = async (productId: string, reporterId: string, input: CreateProductReportInput) => {
@@ -100,26 +85,18 @@ const getMine = async (
 };
 
 const list = async (
-  role: UserRole,
+  role: string,
   userId: string,
   query: ListProductReportsQuery,
 ): Promise<{ payload: ProductReportListPayload; total: number }> => {
+  if (role !== 'admin') {
+    throw AppError.forbidden('You do not have permission to perform this action');
+  }
+
   const filter: Record<string, unknown> = {};
 
   if (query.status) {
     filter.status = query.status;
-  }
-
-  if (role === 'vendor') {
-    const storeId = await resolveVendorStoreId(userId);
-
-    if (!storeId) {
-      return { payload: { reports: [] }, total: 0 };
-    }
-
-    filter.storeId = toObjectId(storeId);
-  } else if (role !== 'admin') {
-    throw AppError.forbidden('You do not have permission to perform this action');
   }
 
   const skip = (query.page - 1) * query.limit;

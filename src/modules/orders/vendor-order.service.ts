@@ -3,6 +3,7 @@ import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import { walletService } from '../wallet/wallet.service';
 import { groupOrderItemsByStore } from '../fulfillment/fulfillment.mapper';
+import { ShipmentModel } from '../fulfillment/shipment.model';
 import { VendorFulfillmentModel } from '../fulfillment/vendor-fulfillment.model';
 import { StoreModel } from '../stores/store.model';
 import type { UserRole } from '../auth/types';
@@ -29,21 +30,30 @@ import { restoreStockWithMovement } from './stock-movement.service';
 import {
   toAdminOrderDetail,
   toAdminOrderListItem,
+  toAdminShipmentDto,
+  toAdminVendorOrderDto,
   toVendorOrderDto,
   toVendorOrderSummary,
 } from './vendor-order.mapper';
 import type {
   ListAdminOrdersQuery,
+  ListAdminVendorOrdersQuery,
   ListVendorOrdersQuery,
   UpdateVendorOrderStatusBody,
 } from './vendor-order.validator';
-import { ShipmentModel } from '../fulfillment/shipment.model';
 import { fulfillmentService } from '../fulfillment/fulfillment.service';
 import { toVendorFulfillmentDto } from '../fulfillment/fulfillment.mapper';
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 const VENDOR_SORTS: Record<ListVendorOrdersQuery['sort'], Record<string, 1 | -1>> = {
+  createdAt: { createdAt: 1, _id: 1 },
+  '-createdAt': { createdAt: -1, _id: 1 },
+  updatedAt: { updatedAt: 1, _id: 1 },
+  '-updatedAt': { updatedAt: -1, _id: 1 },
+};
+
+const ADMIN_VENDOR_SORTS: Record<ListAdminVendorOrdersQuery['sort'], Record<string, 1 | -1>> = {
   createdAt: { createdAt: 1, _id: 1 },
   '-createdAt': { createdAt: -1, _id: 1 },
   updatedAt: { updatedAt: 1, _id: 1 },
@@ -459,6 +469,36 @@ export const vendorOrderService = {
     };
   },
 
+  async listVendorOrdersForAdmin(query: ListAdminVendorOrdersQuery) {
+    const filter: FilterQuery<VendorOrder> = {};
+
+    if (query.status) {
+      filter.status = query.status;
+    }
+
+    if (query.search) {
+      const pattern = new RegExp(query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ vendorOrderNumber: pattern }, { orderNumber: pattern }];
+    }
+
+    const skip = (query.page - 1) * query.limit;
+
+    const [rows, total] = await Promise.all([
+      VendorOrderModel.find(filter)
+        .sort(ADMIN_VENDOR_SORTS[query.sort])
+        .skip(skip)
+        .limit(query.limit),
+      VendorOrderModel.countDocuments(filter),
+    ]);
+
+    return {
+      items: rows.map(toVendorOrderDto),
+      page: query.page,
+      limit: query.limit,
+      total,
+    };
+  },
+
   async getForAdmin(orderId: string) {
     if (!Types.ObjectId.isValid(orderId)) {
       throw AppError.notFound('Order not found');
@@ -470,13 +510,28 @@ export const vendorOrderService = {
       throw AppError.notFound('Order not found');
     }
 
-    const [vendorOrders, activityRows, shipment] = await Promise.all([
+    const [vendorOrderRows, activityRows, shipmentRow] = await Promise.all([
       VendorOrderModel.find({ parentOrderId: order._id }).sort({ vendorOrderNumber: 1 }),
       orderActivityService.listForParent(orderId),
-      ShipmentModel.findOne({ orderId: order._id }).select('status'),
+      ShipmentModel.findOne({ orderId: order._id }),
     ]);
 
-    const detail = toAdminOrderDetail(order, vendorOrders, activityRows, shipment?.status ?? null);
+    const vendorOrders = await Promise.all(
+      vendorOrderRows.map(async (row) => {
+        const [batches, rejectReturns] = await Promise.all([
+          listBatchesForVendorOrder(row._id),
+          listRejectReturnsForVendorOrder(row._id),
+        ]);
+
+        return toAdminVendorOrderDto(row, batches, rejectReturns);
+      }),
+    );
+
+    const shipment = shipmentRow ? toAdminShipmentDto(shipmentRow) : null;
+
+    const activity = activityRows;
+
+    const detail = toAdminOrderDetail(order, vendorOrders, activity, shipment);
     detail.canCancel =
       order.status === 'confirmed' &&
       order.fulfillmentStatus !== 'cancelled' &&

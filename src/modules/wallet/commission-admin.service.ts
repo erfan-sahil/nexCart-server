@@ -64,18 +64,29 @@ export const commissionAdminService = {
     const skip = (page - 1) * limit;
     const filter = { isActive: true };
 
-    const [stores, total] = await Promise.all([
-      StoreModel.find(filter).sort({ name: 1 }).skip(skip).limit(limit).select('_id name'),
+    const [stores, total, settings] = await Promise.all([
+      StoreModel.find(filter)
+        .sort({ name: 1 })
+        .skip(skip)
+        .limit(limit)
+        .select('_id name commissionRate'),
       StoreModel.countDocuments(filter),
+      SiteSettingsModel.findOne({ key: SITE_SETTINGS_KEY }).select('defaultCommissionRate'),
     ]);
+
+    const defaultCommissionRate = settings?.defaultCommissionRate ?? 10;
 
     const items = await Promise.all(
       stores.map(async (store) => {
         const balances = await walletService.getStoreBalances(String(store._id));
+        const hasOverride = store.commissionRate !== null && store.commissionRate !== undefined;
 
         return {
           storeId: String(store._id),
           storeName: store.name,
+          commissionRate: hasOverride ? store.commissionRate : null,
+          effectiveCommissionRate: hasOverride ? store.commissionRate : defaultCommissionRate,
+          hasOverride,
           pendingSettlement: balances.pendingSettlement,
           availableBalance: balances.availableBalance,
           withdrawnBalance: money(0),
@@ -84,5 +95,31 @@ export const commissionAdminService = {
     );
 
     return { items, page, limit, total };
+  },
+
+  async releaseStoreSettlement(
+    storeId: string,
+    input: { force?: boolean; amount?: number; note?: string } = {},
+  ) {
+    if (!Types.ObjectId.isValid(storeId)) {
+      throw AppError.notFound('Store not found');
+    }
+
+    const store = await StoreModel.findById(storeId).select('_id name isActive');
+
+    if (!store) {
+      throw AppError.notFound('Store not found');
+    }
+
+    if (!store.isActive) {
+      throw AppError.validation('Cannot release settlement for an inactive store');
+    }
+
+    const result = await walletService.adminReleaseStoreSettlement(storeId, input);
+
+    return {
+      ...result,
+      storeName: store.name,
+    };
   },
 };

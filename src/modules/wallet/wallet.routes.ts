@@ -5,6 +5,7 @@ import { commissionPermissions, walletController, walletPermissions } from './wa
 import {
   listVendorEarningsQuerySchema,
   listWalletTransactionsQuerySchema,
+  releaseStoreSettlementBodySchema,
   storeCommissionBodySchema,
   storeCommissionParamsSchema,
   updateCommissionSettingsSchema,
@@ -45,6 +46,13 @@ adminCommissionRouter.patch(
   ...requirePermissions(commissionPermissions.settings),
   validate({ params: storeCommissionParamsSchema, body: storeCommissionBodySchema }),
   walletController.setStoreCommission,
+);
+
+adminCommissionRouter.post(
+  '/stores/:storeId/release-settlement',
+  ...requirePermissions(commissionPermissions.settings),
+  validate({ params: storeCommissionParamsSchema, body: releaseStoreSettlementBodySchema }),
+  walletController.releaseStoreSettlement,
 );
 
 adminCommissionRouter.get(

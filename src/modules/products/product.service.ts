@@ -13,6 +13,7 @@ import { CategoryAttributeModel } from '../attributes/category-attribute.model';
 import { CategoryModel } from '../categories/category.model';
 import { flashDealService } from '../flash-deals/flash-deal.service';
 import { ProductModel, type Product } from './product.model';
+import { ProductVariantModel } from './product-variant.model';
 
 type ProductDocument = HydratedDocument<Product>;
 import { StoreModel, isStoreListed, listedStoreFilter } from '../stores/store.model';
@@ -1133,6 +1134,16 @@ export const productService = {
 
     if (query.isPublished !== undefined) {
       filter.isPublished = query.isPublished;
+    }
+
+    if (query.hasDiscount) {
+      const discountedProductIds = await ProductVariantModel.distinct('productId', {
+        status: 'active',
+        discountType: { $in: ['percent', 'amount'] },
+        discountValue: { $gt: 0 },
+      });
+
+      filter._id = { $in: discountedProductIds };
     }
 
     applySearch(filter, query.search);

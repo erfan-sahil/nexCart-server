@@ -6,11 +6,19 @@ import {
   adminVendorOrderPermissions,
 } from './admin-vendor-order.controller';
 import {
+  listAdminVendorOrdersQuerySchema,
   updateAdminVendorOrderStatusSchema,
   vendorOrderIdParamsSchema,
 } from './vendor-order.validator';
 
 export const adminVendorOrderRouter = Router();
+
+adminVendorOrderRouter.get(
+  '/',
+  ...requirePermissions(adminVendorOrderPermissions.list),
+  validate({ query: listAdminVendorOrdersQuerySchema }),
+  adminVendorOrderController.list,
+);
 
 adminVendorOrderRouter.post(
   '/:vendorOrderId/status',

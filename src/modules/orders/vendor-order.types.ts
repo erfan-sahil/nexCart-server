@@ -12,6 +12,53 @@ import type {
 } from './types';
 import type { UserRole } from '../auth/types';
 
+export type InboundBatchLineDto = {
+  variantId: string;
+  sku: string;
+  productName: string;
+  sentQty: number;
+  acceptedQty: number;
+  rejectedQty: number;
+  rejectionReason: string | null;
+  rejectionNote: string;
+};
+
+export type InboundBatchDto = {
+  id: string;
+  sequence: number;
+  status: string;
+  lines: InboundBatchLineDto[];
+  dispatchedAt: string;
+  receivedAt: string | null;
+  inspectedAt: string | null;
+};
+
+export type RejectReturnLineDto = {
+  variantId: string;
+  sku: string;
+  quantity: number;
+  rejectionReason: string;
+  rejectionNote: string;
+};
+
+export type RejectReturnDto = {
+  id: string;
+  inboundBatchId: string;
+  status: string;
+  lines: RejectReturnLineDto[];
+  sentToVendorAt: string | null;
+  receivedByVendorAt: string | null;
+};
+
+export type AdminShipmentDto = {
+  status: string;
+  carrier: string;
+  trackingNumber: string;
+  packedAt: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+};
+
 export type VendorOrderDto = {
   id: string;
   parentOrderId: string;
@@ -24,6 +71,11 @@ export type VendorOrderDto = {
   itemsSubtotal: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AdminVendorOrderDto = VendorOrderDto & {
+  inboundBatches: InboundBatchDto[];
+  rejectReturns: RejectReturnDto[];
 };
 
 export type VendorOrderSummaryDto = {
@@ -75,7 +127,8 @@ export type AdminOrderDetailDto = AdminOrderListItemDto & {
     codCollectionStatus: string;
   };
   totals: OrderTotalsDto;
-  vendorOrders: VendorOrderDto[];
+  shipment: AdminShipmentDto | null;
+  vendorOrders: AdminVendorOrderDto[];
   activity: OrderActivityDto[];
   canCancel: boolean;
 };

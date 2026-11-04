@@ -9,6 +9,7 @@ import { walletService } from './wallet.service';
 import type {
   ListVendorEarningsQuery,
   ListWalletTransactionsQuery,
+  ReleaseStoreSettlementBody,
   StoreCommissionBody,
   UpdateCommissionSettingsInput,
 } from './wallet.validator';
@@ -71,6 +72,19 @@ const setStoreCommission = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, data, { message: 'Store commission updated' });
 });
 
+const releaseStoreSettlement = asyncHandler(async (req: Request, res: Response) => {
+  const storeId = Array.isArray(req.params.storeId) ? req.params.storeId[0] : req.params.storeId;
+  const body = req.body as ReleaseStoreSettlementBody;
+  const data = await commissionAdminService.releaseStoreSettlement(storeId ?? '', body);
+
+  sendSuccess(res, data, {
+    message:
+      data.releasedCount > 0
+        ? `Released ${data.releasedCount} order(s) to available balance`
+        : 'No pending settlement orders were eligible to release',
+  });
+});
+
 const listVendorEarnings = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query as unknown as ListVendorEarningsQuery;
   const result = await commissionAdminService.listVendorEarnings(query.page, query.limit);
@@ -98,5 +112,6 @@ export const walletController = {
   getCommissionSettings,
   updateCommissionSettings,
   setStoreCommission,
+  releaseStoreSettlement,
   listVendorEarnings,
 };

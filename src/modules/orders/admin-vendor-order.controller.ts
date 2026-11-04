@@ -1,12 +1,16 @@
 import type { Request, Response } from 'express';
 import { Permission } from '../../common/constants/permissions';
 import { asyncHandler } from '../../common/http/asyncHandler';
-import { sendSuccess } from '../../common/http/sendResponse';
+import { sendPaginated, sendSuccess } from '../../common/http/sendResponse';
 import { AppError } from '../../common/errors/AppError';
 import { readIdempotencyKey, runIdempotent } from '../../common/utils/idempotency';
 import { IdempotencyScope } from './constants';
 import { adminVendorOrderStatusService } from './admin-vendor-order-status.service';
-import type { UpdateAdminVendorOrderStatusBody } from './vendor-order.validator';
+import { vendorOrderService } from './vendor-order.service';
+import type {
+  ListAdminVendorOrdersQuery,
+  UpdateAdminVendorOrderStatusBody,
+} from './vendor-order.validator';
 
 const adminUserId = (req: Request) => {
   if (!req.auth) {
@@ -15,6 +19,17 @@ const adminUserId = (req: Request) => {
 
   return req.auth.user.id;
 };
+
+const list = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query as unknown as ListAdminVendorOrdersQuery;
+  const result = await vendorOrderService.listVendorOrdersForAdmin(query);
+
+  sendPaginated(res, result.items, {
+    page: result.page,
+    limit: result.limit,
+    total: result.total,
+  });
+});
 
 const updateStatus = asyncHandler(async (req: Request, res: Response) => {
   const vendorOrderId = Array.isArray(req.params.vendorOrderId)
@@ -41,9 +56,11 @@ const updateStatus = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const adminVendorOrderController = {
+  list,
   updateStatus,
 };
 
 export const adminVendorOrderPermissions = {
+  list: Permission.adminOrders,
   updateStatus: Permission.adminOrders,
 };

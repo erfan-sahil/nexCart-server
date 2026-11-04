@@ -10,6 +10,7 @@ import {
   listVendorApplicationsQuerySchema,
   reviewVendorApplicationSchema,
   updateVendorApplicationSchema,
+  updateVendorBusinessRecordsSchema,
   vendorApplicationIdParamsSchema,
   vendorApplicationNoteSchema,
 } from './vendor-application.validator';
@@ -23,6 +24,13 @@ vendorApplicationRouter.patch(
   authenticate,
   validate({ body: updateVendorApplicationSchema }),
   vendorApplicationController.updateMine,
+);
+
+vendorApplicationRouter.patch(
+  '/me/business-records',
+  authenticate,
+  validate({ body: updateVendorBusinessRecordsSchema }),
+  vendorApplicationController.updateMineBusinessRecords,
 );
 
 vendorApplicationRouter.post(

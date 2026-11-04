@@ -8,6 +8,7 @@ import type {
   ListVendorApplicationsQuery,
   ReviewVendorApplicationInput,
   SaveVendorApplicationInput,
+  UpdateVendorBusinessRecordsInput,
   VendorApplicationNoteInput,
 } from './vendor-application.validator';
 
@@ -38,6 +39,15 @@ const updateMine = asyncHandler(async (req: Request, res: Response) => {
     statusCode: result.created ? 201 : 200,
     message: result.created ? 'Vendor application saved' : 'Vendor application updated',
   });
+});
+
+const updateMineBusinessRecords = asyncHandler(async (req: Request, res: Response) => {
+  const application = await vendorApplicationService.updateMineBusinessRecords(
+    actorId(req),
+    req.body as UpdateVendorBusinessRecordsInput,
+  );
+
+  sendSuccess(res, application, { message: 'Business records updated' });
 });
 
 const absoluteUploadUrl = (req: Request, url: string) => {
@@ -153,6 +163,7 @@ const rejectApplication = asyncHandler(async (req: Request, res: Response) => {
 export const vendorApplicationController = {
   getMine,
   updateMine,
+  updateMineBusinessRecords,
   uploadMineSelfie,
   uploadMineFile,
   submitMine,
