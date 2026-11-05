@@ -41,6 +41,8 @@ const VENDOR_TRANSITIONS: Record<VendorOrderStatus, VendorOrderStatus[]> = {
   shipped: [],
   out_for_delivery: [],
   delivered: [],
+  delivery_failed: [],
+  customer_rejected: [],
 };
 
 export const canVendorTransition = (from: VendorOrderStatus, to: VendorOrderStatus) => {

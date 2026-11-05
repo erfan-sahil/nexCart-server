@@ -35,8 +35,14 @@ export const rollupParentFulfillmentStatus = async (parentOrderId: Types.ObjectI
       next = 'delivered';
     }
 
+    if (
+      ['delivery_failed', 'customer_rejected', 'returning_to_warehouse'].includes(shipment.status)
+    ) {
+      next = order.fulfillmentStatus === 'partially_returned' ? 'partially_returned' : 'returned';
+    }
+
     if (shipment.status === 'returned_to_warehouse') {
-      next = 'returned';
+      next = order.fulfillmentStatus === 'partially_returned' ? 'partially_returned' : 'returned';
     }
   }
 

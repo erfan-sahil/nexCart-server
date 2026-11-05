@@ -5,8 +5,6 @@ import { StoreModel } from '../stores/store.model';
 import { AppError } from '../../common/errors/AppError';
 import { walletService } from './wallet.service';
 
-const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-
 export const commissionAdminService = {
   async getSettings() {
     const record = await SiteSettingsModel.findOne({ key: SITE_SETTINGS_KEY }).select(
@@ -89,7 +87,8 @@ export const commissionAdminService = {
           hasOverride,
           pendingSettlement: balances.pendingSettlement,
           availableBalance: balances.availableBalance,
-          withdrawnBalance: money(0),
+          withdrawnBalance: balances.withdrawnBalance,
+          totalBalance: balances.totalBalance,
         };
       }),
     );

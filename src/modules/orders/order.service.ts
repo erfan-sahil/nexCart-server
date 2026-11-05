@@ -10,6 +10,7 @@ import { runIdempotent } from '../../common/utils/idempotency';
 import { IdempotencyScope } from './constants';
 import { assertOrderOwner, customerObjectId, toOrderDto, toOrderTrackingDto } from './order.mapper';
 import { VendorOrderModel } from './vendor-order.model';
+import { ReturnRequestModel } from '../returns/return-request.model';
 import { buildOrderNumber, buildTotals, quoteCheckout, resolveCheckoutLines } from './pricing';
 import { couponService } from '../coupons/coupon.service';
 import {
@@ -126,6 +127,7 @@ export const orderService = {
             grandTotal: totals.grandTotal,
             amountDueNow: totals.amountDueNow,
             amountPaid: 0,
+            amountRefunded: 0,
             balanceDue: totals.balanceDue,
             refundableAmount: 0,
             currency: totals.currency,
@@ -208,12 +210,15 @@ export const orderService = {
 
     assertOrderOwner(order, actor.customerId);
 
-    const [vendorOrders, shipment] = await Promise.all([
+    const [vendorOrders, shipment, latestReturn] = await Promise.all([
       VendorOrderModel.find({ parentOrderId: order._id }).select('status'),
       ShipmentModel.findOne({ orderId: order._id }).select('status'),
+      ReturnRequestModel.findOne({ parentOrderId: order._id })
+        .sort({ createdAt: -1 })
+        .select('status'),
     ]);
 
-    return toOrderDto(order, vendorOrders, shipment?.status ?? null);
+    return toOrderDto(order, vendorOrders, shipment?.status ?? null, latestReturn?.status ?? null);
   },
 
   async track(input: TrackOrderInput): Promise<OrderTrackingDto> {
@@ -231,13 +236,16 @@ export const orderService = {
       throw AppError.notFound(TRACK_MISS);
     }
 
-    const [shipment, fulfillments, products, vendorOrders] = await Promise.all([
+    const [shipment, fulfillments, products, vendorOrders, latestReturn] = await Promise.all([
       ShipmentModel.findOne({ orderId: order._id }),
       VendorFulfillmentModel.find({ orderId: order._id }),
       ProductModel.find({
         _id: { $in: [...new Set(order.items.map((item) => item.productId))] },
       }).select('slug images thumbnailId'),
       VendorOrderModel.find({ parentOrderId: order._id }).select('status'),
+      ReturnRequestModel.findOne({ parentOrderId: order._id })
+        .sort({ createdAt: -1 })
+        .select('status'),
     ]);
 
     return toOrderTrackingDto(
@@ -246,6 +254,7 @@ export const orderService = {
       fulfillments,
       new Map(products.map((product) => [String(product._id), product])),
       vendorOrders,
+      latestReturn?.status ?? null,
     );
   },
 };

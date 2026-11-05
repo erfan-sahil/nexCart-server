@@ -118,6 +118,7 @@ const orderSchema = new Schema(
     grandTotal: { type: Number, required: true, min: 0 },
     amountDueNow: { type: Number, required: true, min: 0 },
     amountPaid: { type: Number, required: true, default: 0, min: 0 },
+    amountRefunded: { type: Number, required: true, default: 0, min: 0 },
     balanceDue: { type: Number, required: true, min: 0 },
     refundableAmount: { type: Number, required: true, default: 0, min: 0 },
     currency: {

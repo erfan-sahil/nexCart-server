@@ -8,6 +8,7 @@ import { defaultFulfillmentStatus, projectCustomerStatus } from './order-status'
 import { projectCustomerStatusWithVendorOrders } from './customer-order-status.service';
 import { toOrderDto } from './order.mapper';
 import type {
+  AdminDeliveryReturnDto,
   AdminOrderDetailDto,
   AdminOrderListItemDto,
   AdminShipmentDto,
@@ -138,11 +139,14 @@ export const toAdminOrderDetail = (
   vendorOrders: AdminVendorOrderDto[],
   activity: OrderActivityDto[],
   shipment: AdminShipmentDto | null,
+  returns: AdminDeliveryReturnDto[] = [],
 ): AdminOrderDetailDto => {
+  const latestReturnStatus = returns[0]?.status ?? null;
   const customerStatus = projectCustomerStatusWithVendorOrders(
     order,
     vendorOrders,
     shipment?.status ?? null,
+    latestReturnStatus,
   );
 
   return {
@@ -161,11 +165,14 @@ export const toAdminOrderDetail = (
     },
     payment: {
       amountPaid: order.amountPaid,
+      amountRefunded: order.amountRefunded ?? 0,
       balanceDue: order.balanceDue,
+      refundableAmount: order.refundableAmount ?? 0,
       codCollectionStatus: order.codCollectionStatus,
     },
     totals: toOrderDto(order).totals,
     shipment,
+    returns,
     vendorOrders,
     activity,
     canCancel: false,

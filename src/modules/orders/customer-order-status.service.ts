@@ -16,6 +16,8 @@ const ACTIVE_VENDOR_STATUSES = new Set([
   'shipped',
   'out_for_delivery',
   'delivered',
+  'delivery_failed',
+  'customer_rejected',
 ]);
 
 const vendorMilestoneRank = (status: VendorOrder['status']) => {
@@ -34,6 +36,8 @@ const vendorMilestoneRank = (status: VendorOrder['status']) => {
     shipped: 2,
     out_for_delivery: 3,
     delivered: 4,
+    delivery_failed: 3,
+    customer_rejected: 3,
   };
 
   return ranks[status] ?? 0;
@@ -43,6 +47,7 @@ export const projectCustomerStatusWithVendorOrders = (
   order: Pick<Order, 'status' | 'fulfillmentStatus' | 'paymentMethod'>,
   vendorOrders: Pick<VendorOrder, 'status'>[],
   shipmentStatus?: string | null,
+  refundStatus?: string | null,
 ): CustomerOrderStatus => {
   if (order.status === 'cancelled' || order.fulfillmentStatus === 'cancelled') {
     return 'cancelled';
@@ -56,7 +61,31 @@ export const projectCustomerStatusWithVendorOrders = (
     return 'awaiting_payment';
   }
 
+  if (refundStatus === 'refunded') {
+    return order.fulfillmentStatus === 'partially_returned' ? 'delivered' : 'refunded';
+  }
+
+  if (refundStatus === 'refund_processing' || refundStatus === 'accepted') {
+    return 'refund_processing';
+  }
+
+  if (shipmentStatus === 'returning_to_warehouse' || shipmentStatus === 'returned_to_warehouse') {
+    return 'returning_to_warehouse';
+  }
+
+  if (shipmentStatus === 'delivery_failed') {
+    return 'delivery_failed';
+  }
+
+  if (shipmentStatus === 'customer_rejected') {
+    return 'customer_rejected';
+  }
+
   if (order.status === 'delivered' || order.fulfillmentStatus === 'delivered') {
+    return 'delivered';
+  }
+
+  if (order.fulfillmentStatus === 'partially_returned' && shipmentStatus !== 'out_for_delivery') {
     return 'delivered';
   }
 
