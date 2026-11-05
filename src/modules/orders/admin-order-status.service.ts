@@ -116,7 +116,9 @@ export const adminOrderStatusService = {
       await VendorOrderModel.updateMany(
         {
           parentOrderId: orderObjectId,
-          status: { $nin: ['cancelled', 'delivery_failed', 'customer_rejected'] },
+          status: {
+            $nin: ['cancelled', 'delivery_failed', 'customer_rejected', 'partially_rejected'],
+          },
         },
         { $set: { status: 'delivered' } },
       );

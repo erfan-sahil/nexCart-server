@@ -1,11 +1,13 @@
+import type { ClientSession } from 'mongoose';
 import { Types } from 'mongoose';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
+import { withTransaction } from '../../config/transaction';
 import { ShipmentModel } from '../fulfillment/shipment.model';
+import type { VendorOrderStatus } from '../orders/constants';
 import { OrderModel } from '../orders/order.model';
 import { rollupParentFulfillmentStatus } from '../orders/order-rollup.service';
 import { orderActivityService } from '../orders/order-activity.service';
-import { restoreStockWithMovement } from '../orders/stock-movement.service';
 import { VendorOrderModel, type VendorOrder } from '../orders/vendor-order.model';
 import { walletService } from '../wallet/wallet.service';
 import { RefundTransactionModel } from './refund-transaction.model';
@@ -15,6 +17,7 @@ import {
   type ReturnLineDisposition,
   type ReturnRequest,
 } from './return-request.model';
+import { vendorReturnShipmentService } from './vendor-return-shipment.service';
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -195,10 +198,67 @@ const activeMerchandiseTotal = (vendorOrders: VendorOrder[]) =>
 const rejectedMerchandiseTotal = (lines: Array<{ unitPrice: number; quantity: number }>) =>
   money(lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0));
 
+export const resolveVendorOrderReturnStatus = (
+  vendorOrder: Pick<VendorOrder, 'items'>,
+  rejectedByVariant: Map<string, number> | undefined,
+  kind: ReturnKind,
+): {
+  status: Extract<
+    VendorOrderStatus,
+    'delivered' | 'partially_rejected' | 'customer_rejected' | 'delivery_failed'
+  >;
+  remainingSubtotal: number;
+  rejectedAll: boolean;
+} => {
+  if (!rejectedByVariant) {
+    const remainingSubtotal = money(
+      vendorOrder.items.reduce(
+        (sum, item) => sum + item.unitPrice * (item.targetQty ?? item.quantity),
+        0,
+      ),
+    );
+    return { status: 'delivered', remainingSubtotal, rejectedAll: false };
+  }
+
+  let remainingSubtotal = 0;
+  let rejectedAll = true;
+  let rejectedAny = false;
+
+  for (const item of vendorOrder.items) {
+    const maxQty = item.targetQty ?? item.quantity;
+    const rejectedQty = rejectedByVariant.get(String(item.variantId)) ?? 0;
+    const keptQty = maxQty - rejectedQty;
+
+    if (rejectedQty > 0) {
+      rejectedAny = true;
+    }
+
+    if (keptQty > 0) {
+      rejectedAll = false;
+      remainingSubtotal = money(remainingSubtotal + item.unitPrice * keptQty);
+    }
+  }
+
+  if (rejectedAll) {
+    return {
+      status: kind === 'delivery_failed' ? 'delivery_failed' : 'customer_rejected',
+      remainingSubtotal: 0,
+      rejectedAll: true,
+    };
+  }
+
+  if (rejectedAny) {
+    return { status: 'partially_rejected', remainingSubtotal, rejectedAll: false };
+  }
+
+  return { status: 'delivered', remainingSubtotal, rejectedAll: false };
+};
+
 const syncVendorOrdersForReturn = async (
   vendorOrders: VendorOrder[],
   lines: ReturnLineInput[],
   kind: ReturnKind,
+  session?: ClientSession,
 ) => {
   const rejectedByVendor = new Map<string, Map<string, number>>();
 
@@ -211,6 +271,7 @@ const syncVendorOrdersForReturn = async (
   }
 
   let anyAccepted = false;
+  const syncableStatuses = ['shipped', 'out_for_delivery'] as const;
 
   for (const vendorOrder of vendorOrders) {
     if (vendorOrder.status === 'cancelled') {
@@ -218,39 +279,38 @@ const syncVendorOrdersForReturn = async (
     }
 
     const rejected = rejectedByVendor.get(String(vendorOrder._id));
+    const resolved = resolveVendorOrderReturnStatus(vendorOrder, rejected, kind);
 
-    if (!rejected) {
+    if (resolved.status === 'delivered' || resolved.status === 'partially_rejected') {
       anyAccepted = true;
-      await VendorOrderModel.updateOne({ _id: vendorOrder._id }, { $set: { status: 'delivered' } });
+    }
+
+    const update = VendorOrderModel.updateOne(
+      {
+        _id: vendorOrder._id,
+        status: { $in: [...syncableStatuses] },
+      },
+      { $set: { status: resolved.status } },
+    );
+
+    if (session) {
+      await update.session(session);
+    } else {
+      await update;
+    }
+
+    if (resolved.rejectedAll) {
+      await walletService.reversePendingEarnings(vendorOrder._id, session);
       continue;
     }
 
-    let remainingSubtotal = 0;
-    let rejectedAll = true;
-
-    for (const item of vendorOrder.items) {
-      const maxQty = item.targetQty ?? item.quantity;
-      const rejectedQty = rejected.get(String(item.variantId)) ?? 0;
-      const keptQty = maxQty - rejectedQty;
-
-      if (keptQty > 0) {
-        rejectedAll = false;
-        remainingSubtotal = money(remainingSubtotal + item.unitPrice * keptQty);
-      }
-    }
-
-    if (rejectedAll) {
-      await VendorOrderModel.updateOne(
-        { _id: vendorOrder._id },
-        { $set: { status: kind === 'delivery_failed' ? 'delivery_failed' : 'customer_rejected' } },
+    if (resolved.status === 'partially_rejected') {
+      await walletService.adjustPendingEarningsToSubtotal(
+        vendorOrder._id,
+        resolved.remainingSubtotal,
+        session,
       );
-      await walletService.reversePendingEarnings(vendorOrder._id);
-      continue;
     }
-
-    anyAccepted = true;
-    await VendorOrderModel.updateOne({ _id: vendorOrder._id }, { $set: { status: 'delivered' } });
-    await walletService.adjustPendingEarningsToSubtotal(vendorOrder._id, remainingSubtotal);
   }
 
   return { anyAccepted };
@@ -288,23 +348,6 @@ const applyOrderPaymentRefund = async (
   await OrderModel.updateOne({ _id: order._id }, { $set: update });
 };
 
-const restockSellableLines = async (row: ReturnRequest) => {
-  for (const line of row.lines) {
-    if (line.disposition !== 'sellable') {
-      continue;
-    }
-
-    await restoreStockWithMovement({
-      orderId: row.parentOrderId,
-      variantId: line.variantId,
-      productId: line.productId,
-      quantity: line.quantity,
-      reason: 'delivery_return_restock',
-      idempotencyKey: `return:${String(row._id)}:line:${String(line.variantId)}:restock`,
-    });
-  }
-};
-
 const processAcceptedRefund = async (adminId: string, returnId: string) => {
   const claimed = await ReturnRequestModel.findOneAndUpdate(
     { _id: returnId, status: 'accepted' },
@@ -325,8 +368,6 @@ const processAcceptedRefund = async (adminId: string, returnId: string) => {
   if (!order) {
     throw AppError.notFound('Order not found');
   }
-
-  await restockSellableLines(claimed);
 
   const vendorOrders = await VendorOrderModel.find({ parentOrderId: order._id });
   const rejectedGross = rejectedMerchandiseTotal(claimed.lines);
@@ -420,6 +461,8 @@ const processAcceptedRefund = async (adminId: string, returnId: string) => {
   claimed.resolvedByAdminId = new Types.ObjectId(adminId);
   await claimed.save();
 
+  const vendorReturnShipments = await vendorReturnShipmentService.createForRefundedReturn(claimed);
+
   const fulfillmentStatus = allRejected ? 'returned' : 'partially_returned';
   await OrderModel.updateOne(
     { _id: order._id },
@@ -442,6 +485,7 @@ const processAcceptedRefund = async (adminId: string, returnId: string) => {
       returnId: String(claimed._id),
       cashRefundAmount: breakdown.cashRefundAmount,
       balanceWaivedAmount: breakdown.balanceWaivedAmount,
+      vendorReturnShipmentIds: vendorReturnShipments.map((row) => row.id),
     },
   });
 
@@ -597,42 +641,73 @@ export const returnService = {
     const nextShipmentStatus =
       input.kind === 'delivery_failed' ? 'delivery_failed' : 'customer_rejected';
 
-    shipment.status = nextShipmentStatus;
-    await shipment.save();
-
-    const { anyAccepted } = await syncVendorOrdersForReturn(vendorOrders, lines, input.kind);
-
-    if (anyAccepted && !shipment.deliveredAt) {
-      shipment.deliveredAt = new Date();
-      await shipment.save();
-    }
-
     let row: ReturnRequest;
+    let anyAccepted = false;
+    let deliveredAt: Date | null = shipment.deliveredAt ?? null;
 
     try {
-      row = await ReturnRequestModel.create({
-        parentOrderId: orderObjectId,
-        shipmentId: shipment._id,
-        kind: input.kind,
-        reason: input.reason.trim(),
-        status: 'pending_warehouse_receipt',
-        lines,
+      const result = await withTransaction(async (session) => {
+        const shipmentUpdate: Record<string, unknown> = { status: nextShipmentStatus };
+        const syncResult = await syncVendorOrdersForReturn(
+          vendorOrders,
+          lines,
+          input.kind,
+          session,
+        );
+        anyAccepted = syncResult.anyAccepted;
+
+        if (anyAccepted && !shipment.deliveredAt) {
+          shipmentUpdate.deliveredAt = new Date();
+        }
+
+        await ShipmentModel.updateOne({ _id: shipment._id }, { $set: shipmentUpdate }).session(
+          session,
+        );
+
+        const created = await ReturnRequestModel.create(
+          [
+            {
+              parentOrderId: orderObjectId,
+              shipmentId: shipment._id,
+              kind: input.kind,
+              reason: input.reason.trim(),
+              status: 'pending_warehouse_receipt',
+              lines,
+            },
+          ],
+          { session },
+        );
+
+        const createdRow = created[0];
+
+        if (!createdRow) {
+          throw AppError.internal('Return request could not be created');
+        }
+
+        await OrderModel.updateOne(
+          { _id: orderObjectId },
+          {
+            $set: {
+              fulfillmentStatus: anyAccepted ? 'partially_returned' : 'returned',
+            },
+          },
+        ).session(session);
+
+        return {
+          row: createdRow,
+          deliveredAt:
+            (shipmentUpdate.deliveredAt as Date | undefined) ?? shipment.deliveredAt ?? null,
+        };
       });
+
+      row = result.row;
+      deliveredAt = result.deliveredAt;
     } catch (error) {
       if (isDuplicateKeyError(error)) {
         throw AppError.conflict('A return already exists for this shipment');
       }
       throw error;
     }
-
-    await OrderModel.updateOne(
-      { _id: orderObjectId },
-      {
-        $set: {
-          fulfillmentStatus: anyAccepted ? 'partially_returned' : 'returned',
-        },
-      },
-    );
 
     await orderActivityService.log({
       parentOrderId: orderObjectId,
@@ -650,8 +725,8 @@ export const returnService = {
     return {
       orderId,
       shipment: {
-        status: shipment.status,
-        deliveredAt: shipment.deliveredAt?.toISOString() ?? null,
+        status: nextShipmentStatus,
+        deliveredAt: deliveredAt?.toISOString() ?? null,
       },
       return: toReturnDto(row),
     };

@@ -25,6 +25,10 @@ import {
   vendorWithdrawalRouter,
 } from './modules/withdrawals/withdrawal.routes';
 import { adminReturnRouter, vendorReturnRouter } from './modules/returns/return.routes';
+import {
+  adminVendorReturnShipmentRouter,
+  vendorVendorReturnShipmentRouter,
+} from './modules/returns/vendor-return-shipment.routes';
 import { adminFinanceReportRouter } from './modules/reports/finance-report.routes';
 import { sslcommerzRouter } from './modules/payments';
 import { productReportInboxRouter, productReportOnProductRouter } from './modules/product-reports';
@@ -76,4 +80,6 @@ apiRouter.use('/vendor/withdrawals', vendorWithdrawalRouter);
 apiRouter.use('/admin/withdrawals', adminWithdrawalRouter);
 apiRouter.use('/vendor/returns', vendorReturnRouter);
 apiRouter.use('/admin/returns', adminReturnRouter);
+apiRouter.use('/vendor/vendor-return-shipments', vendorVendorReturnShipmentRouter);
+apiRouter.use('/admin/vendor-return-shipments', adminVendorReturnShipmentRouter);
 apiRouter.use('/admin/finance/reports', adminFinanceReportRouter);

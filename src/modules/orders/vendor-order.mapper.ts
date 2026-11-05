@@ -17,7 +17,9 @@ import type {
   OrderActivityDto,
   RejectReturnDto,
   VendorOrderDto,
+  VendorOrderRejectionLineSummaryDto,
   VendorOrderSummaryDto,
+  VendorReturnShipmentDto,
 } from './vendor-order.types';
 
 export const toInboundBatchDto = (batch: InboundBatch): InboundBatchDto => ({
@@ -67,10 +69,14 @@ export const toAdminVendorOrderDto = (
   row: VendorOrder,
   batches: InboundBatch[],
   rejectReturns: RejectReturn[],
+  vendorReturnShipments: VendorReturnShipmentDto[] = [],
+  rejectionSummary: VendorOrderRejectionLineSummaryDto[] = [],
 ): AdminVendorOrderDto => ({
   ...toVendorOrderDto(row),
   inboundBatches: batches.map(toInboundBatchDto),
   rejectReturns: rejectReturns.map(toRejectReturnDto),
+  vendorReturnShipments,
+  rejectionSummary,
 });
 
 export const toVendorOrderDto = (row: VendorOrder): VendorOrderDto => ({
@@ -194,4 +200,57 @@ export const toVendorOrderSummary = (counts: Record<string, number>): VendorOrde
   shipped: counts.shipped ?? 0,
   outForDelivery: counts.out_for_delivery ?? 0,
   delivered: counts.delivered ?? 0,
+  partiallyRejected: counts.partially_rejected ?? 0,
+  customerRejected: counts.customer_rejected ?? 0,
+  deliveryFailed: counts.delivery_failed ?? 0,
 });
+
+export const buildRejectionSummary = (
+  vendorOrder: VendorOrder,
+  returnLines: Array<{
+    vendorOrderId: string;
+    variantId: string;
+    quantity: number;
+    disposition: string;
+  }>,
+): VendorOrderRejectionLineSummaryDto[] => {
+  const rejectedByVariant = new Map<string, { quantity: number; disposition: string }>();
+
+  for (const line of returnLines) {
+    if (line.vendorOrderId !== String(vendorOrder._id)) {
+      continue;
+    }
+
+    const current = rejectedByVariant.get(line.variantId);
+    if (current) {
+      current.quantity += line.quantity;
+      if (line.disposition !== 'pending') {
+        current.disposition = line.disposition;
+      }
+    } else {
+      rejectedByVariant.set(line.variantId, {
+        quantity: line.quantity,
+        disposition: line.disposition,
+      });
+    }
+  }
+
+  return vendorOrder.items.map((item) => {
+    const variantId = String(item.variantId);
+    const orderedQty = item.targetQty ?? item.quantity;
+    const rejected = rejectedByVariant.get(variantId);
+    const rejectedQty = rejected?.quantity ?? 0;
+
+    return {
+      variantId,
+      productId: String(item.productId),
+      productName: item.productName,
+      sku: item.sku,
+      orderedQty,
+      acceptedQty: Math.max(0, orderedQty - rejectedQty),
+      rejectedQty,
+      unitPrice: item.unitPrice,
+      disposition: rejected?.disposition ?? null,
+    };
+  });
+};

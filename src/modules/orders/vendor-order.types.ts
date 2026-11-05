@@ -50,6 +50,43 @@ export type RejectReturnDto = {
   receivedByVendorAt: string | null;
 };
 
+export type VendorOrderRejectionLineSummaryDto = {
+  variantId: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  orderedQty: number;
+  acceptedQty: number;
+  rejectedQty: number;
+  unitPrice: number;
+  disposition: string | null;
+};
+
+export type VendorReturnShipmentLineDto = {
+  variantId: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  quantity: number;
+};
+
+export type VendorReturnShipmentDto = {
+  id: string;
+  returnRequestId: string;
+  vendorOrderId: string;
+  parentOrderId: string;
+  storeId: string;
+  vendorUserId: string;
+  status: string;
+  lines: VendorReturnShipmentLineDto[];
+  carrier: string;
+  trackingNumber: string;
+  dispatchedAt: string | null;
+  receivedByVendorAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AdminShipmentDto = {
   status: string;
   carrier: string;
@@ -76,6 +113,13 @@ export type VendorOrderDto = {
 export type AdminVendorOrderDto = VendorOrderDto & {
   inboundBatches: InboundBatchDto[];
   rejectReturns: RejectReturnDto[];
+  vendorReturnShipments: VendorReturnShipmentDto[];
+  rejectionSummary: VendorOrderRejectionLineSummaryDto[];
+};
+
+export type VendorOrderDetailDto = VendorOrderDto & {
+  vendorReturnShipments: VendorReturnShipmentDto[];
+  rejectionSummary: VendorOrderRejectionLineSummaryDto[];
 };
 
 export type VendorOrderSummaryDto = {
@@ -93,6 +137,9 @@ export type VendorOrderSummaryDto = {
   shipped: number;
   outForDelivery: number;
   delivered: number;
+  partiallyRejected: number;
+  customerRejected: number;
+  deliveryFailed: number;
 };
 
 export type OrderActivityDto = {
