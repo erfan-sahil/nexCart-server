@@ -533,7 +533,13 @@ export const fulfillmentService = {
   async advanceShipment(
     _adminId: string,
     orderId: string,
-    nextStatus: 'in_transit' | 'out_for_delivery' | 'delivery_failed' | 'returned_to_warehouse',
+    nextStatus:
+      | 'in_transit'
+      | 'out_for_delivery'
+      | 'delivery_failed'
+      | 'customer_rejected'
+      | 'returning_to_warehouse'
+      | 'returned_to_warehouse',
   ) {
     const order = await requireConfirmedOrder(orderId);
     const shipment = await ShipmentModel.findOne({ orderId: order._id });
@@ -543,9 +549,12 @@ export const fulfillmentService = {
     }
 
     const allowed: Record<string, string[]> = {
-      dispatched: ['in_transit'],
+      dispatched: ['in_transit', 'out_for_delivery'],
       in_transit: ['out_for_delivery', 'delivery_failed'],
-      out_for_delivery: ['delivered', 'delivery_failed', 'returned_to_warehouse'],
+      out_for_delivery: ['delivered', 'delivery_failed', 'customer_rejected'],
+      delivery_failed: ['returning_to_warehouse', 'returned_to_warehouse'],
+      customer_rejected: ['returning_to_warehouse', 'returned_to_warehouse'],
+      returning_to_warehouse: ['returned_to_warehouse'],
     };
 
     const options = allowed[shipment.status];
@@ -572,6 +581,17 @@ export const fulfillmentService = {
       )
     ) {
       throw AppError.validation('Shipment must be packed before delivery');
+    }
+
+    if (
+      [
+        'delivery_failed',
+        'customer_rejected',
+        'returning_to_warehouse',
+        'returned_to_warehouse',
+      ].includes(shipment.status)
+    ) {
+      throw AppError.validation('Cannot mark delivered while a delivery return is in progress');
     }
 
     shipment.status = 'delivered';

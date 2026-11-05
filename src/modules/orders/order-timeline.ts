@@ -24,6 +24,11 @@ const customerStatusRank = (
     shipped_to_warehouse: 3,
     out_for_delivery: 4,
     delivered: 5,
+    delivery_failed: 5,
+    customer_rejected: 5,
+    returning_to_warehouse: 6,
+    refund_processing: 7,
+    refunded: 8,
     shipped: 3,
   };
 
@@ -34,17 +39,24 @@ export const projectCustomerTimeline = (input: {
   order: Order;
   shipment: Shipment | null;
   vendorOrders?: Pick<VendorOrder, 'status'>[];
+  refundStatus?: string | null;
 }): CustomerTimelineStep[] => {
-  const { order, shipment, vendorOrders } = input;
+  const { order, shipment, vendorOrders, refundStatus } = input;
 
   const projected = vendorOrders?.length
-    ? projectCustomerStatusWithVendorOrders(order, vendorOrders, shipment?.status ?? null)
+    ? projectCustomerStatusWithVendorOrders(
+        order,
+        vendorOrders,
+        shipment?.status ?? null,
+        refundStatus,
+      )
     : projectCustomerStatus(order);
 
   const rank = customerStatusRank(projected);
   const placedAt = order.createdAt.toISOString();
   const shippedAt = shipment?.shippedAt?.toISOString() ?? null;
   const deliveredAt = shipment?.deliveredAt?.toISOString() ?? null;
+  const updatedAt = order.updatedAt.toISOString();
 
   if (projected === 'cancelled' || projected === 'expired') {
     return [
@@ -75,7 +87,7 @@ export const projectCustomerTimeline = (input: {
     ];
   }
 
-  return [
+  const steps: CustomerTimelineStep[] = [
     {
       id: 'confirmed',
       label: 'Order confirmed',
@@ -100,11 +112,61 @@ export const projectCustomerTimeline = (input: {
       at: rank >= 4 ? shippedAt : null,
       completed: rank >= 4,
     },
-    {
-      id: 'delivered',
-      label: 'Delivered',
-      at: deliveredAt,
-      completed: rank >= 5,
-    },
   ];
+
+  if (
+    projected === 'delivery_failed' ||
+    projected === 'customer_rejected' ||
+    projected === 'returning_to_warehouse' ||
+    projected === 'refund_processing' ||
+    projected === 'refunded'
+  ) {
+    steps.push({
+      id: projected === 'customer_rejected' ? 'customer_rejected' : 'delivery_failed',
+      label:
+        projected === 'customer_rejected' || shipment?.status === 'customer_rejected'
+          ? 'Customer rejected delivery'
+          : 'Delivery failed',
+      at: updatedAt,
+      completed: true,
+    });
+
+    if (rank >= 6) {
+      steps.push({
+        id: 'returning_to_warehouse',
+        label: 'Returning to NexCart warehouse',
+        at: updatedAt,
+        completed: true,
+      });
+    }
+
+    if (rank >= 7) {
+      steps.push({
+        id: 'refund_processing',
+        label: 'Refund processing',
+        at: updatedAt,
+        completed: true,
+      });
+    }
+
+    if (rank >= 8) {
+      steps.push({
+        id: 'refunded',
+        label: 'Refunded',
+        at: updatedAt,
+        completed: true,
+      });
+    }
+
+    return steps;
+  }
+
+  steps.push({
+    id: 'delivered',
+    label: 'Delivered',
+    at: deliveredAt,
+    completed: rank >= 5,
+  });
+
+  return steps;
 };

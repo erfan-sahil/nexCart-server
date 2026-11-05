@@ -58,6 +58,7 @@ export const buildTotals = async (
     grandTotal,
     amountDueNow,
     amountPaid: 0,
+    amountRefunded: 0,
     balanceDue: paymentMethod === 'prepaid' ? 0 : discountedSubtotal,
     refundableAmount: 0,
     currency: env.ORDER_CURRENCY || ORDER_CURRENCY,

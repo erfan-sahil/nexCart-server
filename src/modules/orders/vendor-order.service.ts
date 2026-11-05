@@ -2,6 +2,7 @@ import { Types, type FilterQuery } from 'mongoose';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import { walletService } from '../wallet/wallet.service';
+import { returnService } from '../returns/return.service';
 import { groupOrderItemsByStore } from '../fulfillment/fulfillment.mapper';
 import { ShipmentModel } from '../fulfillment/shipment.model';
 import { VendorFulfillmentModel } from '../fulfillment/vendor-fulfillment.model';
@@ -510,10 +511,11 @@ export const vendorOrderService = {
       throw AppError.notFound('Order not found');
     }
 
-    const [vendorOrderRows, activityRows, shipmentRow] = await Promise.all([
+    const [vendorOrderRows, activityRows, shipmentRow, returnRows] = await Promise.all([
       VendorOrderModel.find({ parentOrderId: order._id }).sort({ vendorOrderNumber: 1 }),
       orderActivityService.listForParent(orderId),
       ShipmentModel.findOne({ orderId: order._id }),
+      returnService.listForOrder(orderId),
     ]);
 
     const vendorOrders = await Promise.all(
@@ -531,7 +533,31 @@ export const vendorOrderService = {
 
     const activity = activityRows;
 
-    const detail = toAdminOrderDetail(order, vendorOrders, activity, shipment);
+    const detail = toAdminOrderDetail(
+      order,
+      vendorOrders,
+      activity,
+      shipment,
+      returnRows.map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        status: row.status,
+        reason: row.reason,
+        refundAmount: row.refundAmount ?? null,
+        cashRefundAmount: row.cashRefundAmount,
+        balanceWaivedAmount: row.balanceWaivedAmount,
+        deliveryFeeRefund: row.deliveryFeeRefund,
+        lines: row.lines.map((line) => ({
+          variantId: line.variantId,
+          productName: line.productName,
+          sku: line.sku,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          disposition: line.disposition,
+        })),
+        createdAt: row.createdAt,
+      })),
+    );
     detail.canCancel =
       order.status === 'confirmed' &&
       order.fulfillmentStatus !== 'cancelled' &&

@@ -21,16 +21,38 @@ const toShippingDto = (shipping: Order['shipping']): OrderShippingDto => ({
   country: shipping.country,
 });
 
+const toDeliveryOutcome = (shipmentStatus?: string | null) => {
+  if (!shipmentStatus) {
+    return null;
+  }
+
+  if (
+    [
+      'out_for_delivery',
+      'delivered',
+      'delivery_failed',
+      'customer_rejected',
+      'returning_to_warehouse',
+      'returned_to_warehouse',
+    ].includes(shipmentStatus)
+  ) {
+    return shipmentStatus as NonNullable<OrderDto['deliveryOutcome']>;
+  }
+
+  return null;
+};
+
 export const toOrderDto = (
   order: Order,
   vendorOrders?: Pick<VendorOrder, 'status'>[],
   shipmentStatus?: string | null,
+  refundStatus?: string | null,
 ): OrderDto => ({
   id: String(order._id),
   orderNumber: order.orderNumber,
   paymentMethod: order.paymentMethod,
   status: vendorOrders
-    ? projectCustomerStatusWithVendorOrders(order, vendorOrders, shipmentStatus)
+    ? projectCustomerStatusWithVendorOrders(order, vendorOrders, shipmentStatus, refundStatus)
     : projectCustomerStatus(order),
   paymentStatus: order.paymentStatus,
   codCollectionStatus: order.codCollectionStatus,
@@ -55,10 +77,13 @@ export const toOrderDto = (
     grandTotal: order.grandTotal,
     amountDueNow: order.amountDueNow,
     amountPaid: order.amountPaid,
+    amountRefunded: order.amountRefunded ?? 0,
     balanceDue: order.balanceDue,
     refundableAmount: order.refundableAmount,
     currency: order.currency,
   },
+  deliveryOutcome: toDeliveryOutcome(shipmentStatus),
+  refundStatus: refundStatus ?? null,
   stockHoldExpiresAt: order.stockHoldExpiresAt?.toISOString() ?? null,
   createdAt: order.createdAt.toISOString(),
   updatedAt: order.updatedAt.toISOString(),
@@ -82,10 +107,16 @@ export const toOrderTrackingDto = (
   fulfillments: VendorFulfillment[],
   products: Map<string, Pick<Product, 'slug' | 'thumbnailId' | 'images'>>,
   vendorOrders?: Pick<VendorOrder, 'status'>[],
+  refundStatus?: string | null,
 ): OrderTrackingDto => ({
   orderNumber: order.orderNumber,
   status: vendorOrders
-    ? projectCustomerStatusWithVendorOrders(order, vendorOrders, shipment?.status ?? null)
+    ? projectCustomerStatusWithVendorOrders(
+        order,
+        vendorOrders,
+        shipment?.status ?? null,
+        refundStatus,
+      )
     : projectCustomerStatus(order),
   paymentMethod: order.paymentMethod,
   paymentStatus: order.paymentStatus,
@@ -105,9 +136,12 @@ export const toOrderTrackingDto = (
   shippedAt: iso(shipment?.shippedAt),
   deliveredAt: iso(shipment?.deliveredAt),
   fulfillmentStartedAt: iso(shipment?.createdAt),
-  timeline: projectCustomerTimeline({ order, shipment, vendorOrders }),
+  timeline: projectCustomerTimeline({ order, shipment, vendorOrders, refundStatus }),
+  deliveryOutcome: toDeliveryOutcome(shipment?.status ?? null),
+  refundStatus: refundStatus ?? null,
   grandTotal: order.grandTotal,
   currency: order.currency,
+  amountRefunded: order.amountRefunded ?? 0,
   items: order.items.map((item) => {
     const product = products.get(String(item.productId));
 

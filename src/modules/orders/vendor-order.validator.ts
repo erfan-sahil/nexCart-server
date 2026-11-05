@@ -98,11 +98,53 @@ export const updateAdminVendorOrderStatusSchema = z
     }
   });
 
-export const updateAdminOrderStatusSchema = z.object({
-  status: z.enum(['packed', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
-  carrier: z.string().trim().min(1).max(80).optional(),
-  trackingNumber: z.string().trim().min(1).max(80).optional(),
-});
+export const updateAdminOrderStatusSchema = z
+  .object({
+    status: z.enum([
+      'packed',
+      'shipped',
+      'out_for_delivery',
+      'delivered',
+      'cancelled',
+      'delivery_failed',
+      'customer_rejected',
+      'returning_to_warehouse',
+      'returned_to_warehouse',
+    ]),
+    carrier: z.string().trim().min(1).max(80).optional(),
+    trackingNumber: z.string().trim().min(1).max(80).optional(),
+    reason: z.string().trim().min(1).max(500).optional(),
+    returnId: z.string().min(1).optional(),
+    lines: z
+      .array(
+        z.object({
+          variantId: z.string().min(1),
+          quantity: z.number().int().min(1),
+        }),
+      )
+      .min(1)
+      .optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      (value.status === 'delivery_failed' || value.status === 'customer_rejected') &&
+      !value.reason?.trim()
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reason'],
+        message: 'reason is required',
+      });
+    }
+
+    if (value.status === 'customer_rejected' && (!value.lines || value.lines.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['lines'],
+        message: 'lines are required for customer rejection',
+      });
+    }
+  });
 
 export const codCollectionSchema = z.object({
   amountCollected: z.number().min(0),

@@ -521,8 +521,12 @@ export const walletService = {
     }
 
     const rate = row.commissionRate;
+    const previousSubtotal = money(row.itemsSubtotal);
+    const previousCommission = money(row.commissionAmount ?? 0);
     const commissionAmount = money((newSubtotal * rate) / 100);
     const vendorEarnings = money(newSubtotal - commissionAmount);
+    const saleDelta = money(Math.max(0, previousSubtotal - newSubtotal));
+    const commissionDelta = money(Math.max(0, previousCommission - commissionAmount));
 
     await VendorOrderModel.updateOne(
       { _id: row._id },
@@ -537,16 +541,87 @@ export const walletService = {
 
     const adjustKey = `vendorOrder:${String(row._id)}:adjust:${newSubtotal}`;
 
+    if (saleDelta > 0) {
+      try {
+        await LedgerEntryModel.create({
+          vendorUserId: row.vendorUserId,
+          storeId: row.storeId,
+          vendorOrderId: row._id,
+          parentOrderId: row.parentOrderId,
+          type: 'adjustment_debit',
+          amount: saleDelta,
+          account: 'pending',
+          idempotencyKey: `${adjustKey}:sale-debit`,
+        });
+      } catch (error) {
+        if (!isDuplicateKeyError(error)) {
+          throw error;
+        }
+      }
+    }
+
+    if (commissionDelta > 0) {
+      try {
+        await LedgerEntryModel.create({
+          vendorUserId: row.vendorUserId,
+          storeId: row.storeId,
+          vendorOrderId: row._id,
+          parentOrderId: row.parentOrderId,
+          type: 'adjustment_credit',
+          amount: commissionDelta,
+          account: 'pending',
+          idempotencyKey: `${adjustKey}:commission-credit`,
+        });
+      } catch (error) {
+        if (!isDuplicateKeyError(error)) {
+          throw error;
+        }
+      }
+    }
+  },
+
+  /**
+   * If rejected merchandise earnings were already released to available,
+   * debit available once. No-op when still pending (reversed at return open).
+   */
+  async reverseRejectedEarningsIfReleased(input: {
+    vendorOrderId: Types.ObjectId | string;
+    returnId: Types.ObjectId | string;
+    merchandiseRefund: number;
+    adminId: string;
+  }) {
+    const row = await VendorOrderModel.findById(input.vendorOrderId);
+
+    if (typeof row?.commissionRate !== 'number') {
+      return;
+    }
+
+    const commissionRate = row.commissionRate;
+    const released = await this.getReleasedAmountForVendorOrder(row._id);
+
+    if (released <= 0) {
+      return;
+    }
+
+    const merchandise = money(input.merchandiseRefund);
+    const commissionReversal = money((merchandise * commissionRate) / 100);
+    const vendorDebit = money(Math.max(0, merchandise - commissionReversal));
+
+    if (vendorDebit <= 0) {
+      return;
+    }
+
     try {
       await LedgerEntryModel.create({
         vendorUserId: row.vendorUserId,
         storeId: row.storeId,
         vendorOrderId: row._id,
         parentOrderId: row.parentOrderId,
-        type: 'adjustment_debit',
-        amount: Math.max(0, row.itemsSubtotal - newSubtotal),
-        account: 'pending',
-        idempotencyKey: `${adjustKey}:sale-debit`,
+        type: 'refund_debit',
+        amount: vendorDebit,
+        account: 'available',
+        idempotencyKey: `return:${String(input.returnId)}:vendor:${String(row._id)}`,
+        note: `Delivery return refund by ${input.adminId}`,
       });
     } catch (error) {
       if (!isDuplicateKeyError(error)) {

@@ -41,10 +41,20 @@ export type OrderTotalsDto = {
   grandTotal: number;
   amountDueNow: number;
   amountPaid: number;
+  amountRefunded: number;
   balanceDue: number;
   refundableAmount: number;
   currency: string;
 };
+
+export type OrderDeliveryOutcome =
+  | null
+  | 'out_for_delivery'
+  | 'delivered'
+  | 'delivery_failed'
+  | 'customer_rejected'
+  | 'returning_to_warehouse'
+  | 'returned_to_warehouse';
 
 export type OrderDto = {
   id: string;
@@ -57,6 +67,8 @@ export type OrderDto = {
   note: string;
   items: OrderItemDto[];
   totals: OrderTotalsDto;
+  deliveryOutcome: OrderDeliveryOutcome;
+  refundStatus: string | null;
   stockHoldExpiresAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -90,7 +102,10 @@ export type OrderTrackingDto = {
   deliveredAt: string | null;
   fulfillmentStartedAt: string | null;
   timeline: CustomerTimelineStep[];
+  deliveryOutcome: OrderDeliveryOutcome;
+  refundStatus: string | null;
   grandTotal: number;
   currency: string;
+  amountRefunded: number;
   items: OrderTrackingItemDto[];
 };

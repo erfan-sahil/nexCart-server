@@ -119,15 +119,38 @@ export type AdminOrderListItemDto = {
   createdAt: string;
 };
 
+export type AdminDeliveryReturnDto = {
+  id: string;
+  kind: string;
+  status: string;
+  reason: string;
+  refundAmount: number | null;
+  cashRefundAmount: number;
+  balanceWaivedAmount: number;
+  deliveryFeeRefund: number;
+  lines: Array<{
+    variantId: string;
+    productName: string;
+    sku: string;
+    quantity: number;
+    unitPrice: number;
+    disposition: string;
+  }>;
+  createdAt: string;
+};
+
 export type AdminOrderDetailDto = AdminOrderListItemDto & {
   shipping: OrderShippingDto;
   payment: {
     amountPaid: number;
+    amountRefunded: number;
     balanceDue: number;
+    refundableAmount: number;
     codCollectionStatus: string;
   };
   totals: OrderTotalsDto;
   shipment: AdminShipmentDto | null;
+  returns: AdminDeliveryReturnDto[];
   vendorOrders: AdminVendorOrderDto[];
   activity: OrderActivityDto[];
   canCancel: boolean;

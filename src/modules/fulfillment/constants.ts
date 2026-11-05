@@ -19,6 +19,8 @@ export const SHIPMENT_STATUSES = [
   'out_for_delivery',
   'delivered',
   'delivery_failed',
+  'customer_rejected',
+  'returning_to_warehouse',
   'returned_to_warehouse',
   'awaiting_items',
   'ready_to_pack',
