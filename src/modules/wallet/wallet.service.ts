@@ -1,3 +1,4 @@
+import type { ClientSession } from 'mongoose';
 import { Types } from 'mongoose';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
@@ -10,6 +11,42 @@ import { WithdrawalModel } from '../withdrawals/withdrawal.model';
 import { LedgerEntryModel } from './ledger-entry.model';
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const createLedgerEntryIdempotent = async (
+  doc: {
+    vendorUserId: Types.ObjectId;
+    storeId: Types.ObjectId;
+    vendorOrderId?: Types.ObjectId | null;
+    parentOrderId?: Types.ObjectId | null;
+    type: string;
+    amount: number;
+    account: string;
+    idempotencyKey: string;
+    note?: string;
+  },
+  session?: ClientSession,
+) => {
+  if (session) {
+    const existing = await LedgerEntryModel.findOne({
+      idempotencyKey: doc.idempotencyKey,
+    }).session(session);
+
+    if (existing) {
+      return;
+    }
+
+    await LedgerEntryModel.create([doc], { session });
+    return;
+  }
+
+  try {
+    await LedgerEntryModel.create(doc);
+  } catch (error) {
+    if (!isDuplicateKeyError(error)) {
+      throw error;
+    }
+  }
+};
 
 const DEFAULT_COMMISSION_RATE = 10;
 const DEFAULT_HOLD_DAYS = 7;
@@ -181,7 +218,7 @@ export const walletService = {
 
     const completed = await VendorOrderModel.find({
       storeId,
-      status: { $in: ['delivered', 'completed'] },
+      status: { $in: ['delivered', 'completed', 'partially_rejected'] },
       vendorEarnings: { $gt: 0 },
     }).select('_id vendorEarnings parentOrderId vendorUserId storeId createdAt');
 
@@ -465,56 +502,61 @@ export const walletService = {
     };
   },
 
-  async reversePendingEarnings(vendorOrderId: Types.ObjectId | string) {
-    const row = await VendorOrderModel.findById(vendorOrderId);
+  async reversePendingEarnings(vendorOrderId: Types.ObjectId | string, session?: ClientSession) {
+    const rowQuery = VendorOrderModel.findById(vendorOrderId);
+    const row = session ? await rowQuery.session(session) : await rowQuery;
 
-    if (!row || row.commissionRate === null || row.commissionAmount === null) {
+    if (
+      !row ||
+      row.commissionRate === null ||
+      row.commissionRate === undefined ||
+      row.commissionAmount === null ||
+      row.commissionAmount === undefined
+    ) {
       return;
     }
 
+    const saleAmount = money(row.itemsSubtotal);
+    const commissionAmount = money(row.commissionAmount);
     const saleKey = `vendorOrder:${String(row._id)}:sale:reverse`;
     const commissionKey = `vendorOrder:${String(row._id)}:commission:reverse`;
 
-    try {
-      await LedgerEntryModel.create({
+    await createLedgerEntryIdempotent(
+      {
         vendorUserId: row.vendorUserId,
         storeId: row.storeId,
         vendorOrderId: row._id,
         parentOrderId: row.parentOrderId,
         type: 'adjustment_debit',
-        amount: row.itemsSubtotal,
+        amount: saleAmount,
         account: 'pending',
         idempotencyKey: saleKey,
-      });
-    } catch (error) {
-      if (!isDuplicateKeyError(error)) {
-        throw error;
-      }
-    }
+      },
+      session,
+    );
 
-    try {
-      await LedgerEntryModel.create({
+    await createLedgerEntryIdempotent(
+      {
         vendorUserId: row.vendorUserId,
         storeId: row.storeId,
         vendorOrderId: row._id,
         parentOrderId: row.parentOrderId,
         type: 'adjustment_credit',
-        amount: row.commissionAmount,
+        amount: commissionAmount,
         account: 'pending',
         idempotencyKey: commissionKey,
-      });
-    } catch (error) {
-      if (!isDuplicateKeyError(error)) {
-        throw error;
-      }
-    }
+      },
+      session,
+    );
   },
 
   async adjustPendingEarningsToSubtotal(
     vendorOrderId: Types.ObjectId | string,
     newSubtotal: number,
+    session?: ClientSession,
   ) {
-    const row = await VendorOrderModel.findById(vendorOrderId);
+    const rowQuery = VendorOrderModel.findById(vendorOrderId);
+    const row = session ? await rowQuery.session(session) : await rowQuery;
 
     if (!row || row.commissionRate === null || row.commissionRate === undefined) {
       return;
@@ -528,7 +570,7 @@ export const walletService = {
     const saleDelta = money(Math.max(0, previousSubtotal - newSubtotal));
     const commissionDelta = money(Math.max(0, previousCommission - commissionAmount));
 
-    await VendorOrderModel.updateOne(
+    const update = VendorOrderModel.updateOne(
       { _id: row._id },
       {
         $set: {
@@ -539,11 +581,17 @@ export const walletService = {
       },
     );
 
+    if (session) {
+      await update.session(session);
+    } else {
+      await update;
+    }
+
     const adjustKey = `vendorOrder:${String(row._id)}:adjust:${newSubtotal}`;
 
     if (saleDelta > 0) {
-      try {
-        await LedgerEntryModel.create({
+      await createLedgerEntryIdempotent(
+        {
           vendorUserId: row.vendorUserId,
           storeId: row.storeId,
           vendorOrderId: row._id,
@@ -552,17 +600,14 @@ export const walletService = {
           amount: saleDelta,
           account: 'pending',
           idempotencyKey: `${adjustKey}:sale-debit`,
-        });
-      } catch (error) {
-        if (!isDuplicateKeyError(error)) {
-          throw error;
-        }
-      }
+        },
+        session,
+      );
     }
 
     if (commissionDelta > 0) {
-      try {
-        await LedgerEntryModel.create({
+      await createLedgerEntryIdempotent(
+        {
           vendorUserId: row.vendorUserId,
           storeId: row.storeId,
           vendorOrderId: row._id,
@@ -571,12 +616,9 @@ export const walletService = {
           amount: commissionDelta,
           account: 'pending',
           idempotencyKey: `${adjustKey}:commission-credit`,
-        });
-      } catch (error) {
-        if (!isDuplicateKeyError(error)) {
-          throw error;
-        }
-      }
+        },
+        session,
+      );
     }
   },
 

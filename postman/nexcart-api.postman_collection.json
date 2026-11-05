@@ -1653,6 +1653,55 @@
           }
         }
       ]
+    },
+    {
+      "name": "Vendor dashboard",
+      "item": [
+        {
+          "name": "Dashboard overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/vendor/dashboard/overview?range=7d",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vendor", "dashboard", "overview"],
+              "query": [{ "key": "range", "value": "7d", "description": "7d or 30d" }]
+            },
+            "description": "Vendor analytics permission. KPIs, sales series, order queues, wallet snapshot, low stock, rating, and recent orders for the signed-in vendor store."
+          }
+        },
+        {
+          "name": "Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/vendor/analytics?range=30d",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vendor", "analytics"],
+              "query": [
+                {
+                  "key": "range",
+                  "value": "30d",
+                  "description": "7d, 30d, 90d, or 12m"
+                }
+              ]
+            },
+            "description": "Vendor analytics permission. Extended KPIs, revenue series, order status breakdown, fulfillment health, top products, and review summary."
+          }
+        }
+      ]
     }
   ]
 }

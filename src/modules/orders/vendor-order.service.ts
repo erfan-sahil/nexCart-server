@@ -3,6 +3,7 @@ import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import { walletService } from '../wallet/wallet.service';
 import { returnService } from '../returns/return.service';
+import { vendorReturnShipmentService } from '../returns/vendor-return-shipment.service';
 import { groupOrderItemsByStore } from '../fulfillment/fulfillment.mapper';
 import { ShipmentModel } from '../fulfillment/shipment.model';
 import { VendorFulfillmentModel } from '../fulfillment/vendor-fulfillment.model';
@@ -29,6 +30,7 @@ import {
 } from './vendor-order-transitions';
 import { restoreStockWithMovement } from './stock-movement.service';
 import {
+  buildRejectionSummary,
   toAdminOrderDetail,
   toAdminOrderListItem,
   toAdminShipmentDto,
@@ -235,11 +237,26 @@ export const vendorOrderService = {
 
   async getForVendor(vendorUserId: string, vendorOrderId: string) {
     const row = await loadVendorOrderForVendor(vendorUserId, vendorOrderId);
-    const [fulfillment, batches, rejectReturns] = await Promise.all([
-      VendorFulfillmentModel.findOne({ vendorOrderId: row._id }),
-      listBatchesForVendorOrder(row._id),
-      listRejectReturnsForVendorOrder(row._id),
-    ]);
+    const [fulfillment, batches, rejectReturns, vendorReturnShipments, returnRows] =
+      await Promise.all([
+        VendorFulfillmentModel.findOne({ vendorOrderId: row._id }),
+        listBatchesForVendorOrder(row._id),
+        listRejectReturnsForVendorOrder(row._id),
+        vendorReturnShipmentService.listForVendorOrder(row._id),
+        returnService.listForOrder(String(row.parentOrderId)),
+      ]);
+
+    const rejectionSummary = buildRejectionSummary(
+      row,
+      returnRows.flatMap((ret) =>
+        ret.lines.map((line) => ({
+          vendorOrderId: line.vendorOrderId,
+          variantId: line.variantId,
+          quantity: line.quantity,
+          disposition: line.disposition,
+        })),
+      ),
+    );
 
     return {
       ...toVendorOrderDto(row),
@@ -276,6 +293,8 @@ export const vendorOrderService = {
         sentToVendorAt: ret.sentToVendorAt?.toISOString() ?? null,
         receivedByVendorAt: ret.receivedByVendorAt?.toISOString() ?? null,
       })),
+      vendorReturnShipments,
+      rejectionSummary,
     };
   },
 
@@ -511,12 +530,23 @@ export const vendorOrderService = {
       throw AppError.notFound('Order not found');
     }
 
-    const [vendorOrderRows, activityRows, shipmentRow, returnRows] = await Promise.all([
-      VendorOrderModel.find({ parentOrderId: order._id }).sort({ vendorOrderNumber: 1 }),
-      orderActivityService.listForParent(orderId),
-      ShipmentModel.findOne({ orderId: order._id }),
-      returnService.listForOrder(orderId),
-    ]);
+    const [vendorOrderRows, activityRows, shipmentRow, returnRows, parentVendorReturns] =
+      await Promise.all([
+        VendorOrderModel.find({ parentOrderId: order._id }).sort({ vendorOrderNumber: 1 }),
+        orderActivityService.listForParent(orderId),
+        ShipmentModel.findOne({ orderId: order._id }),
+        returnService.listForOrder(orderId),
+        vendorReturnShipmentService.listForParentOrder(order._id),
+      ]);
+
+    const rejectionLines = returnRows.flatMap((ret) =>
+      ret.lines.map((line) => ({
+        vendorOrderId: line.vendorOrderId,
+        variantId: line.variantId,
+        quantity: line.quantity,
+        disposition: line.disposition,
+      })),
+    );
 
     const vendorOrders = await Promise.all(
       vendorOrderRows.map(async (row) => {
@@ -525,7 +555,17 @@ export const vendorOrderService = {
           listRejectReturnsForVendorOrder(row._id),
         ]);
 
-        return toAdminVendorOrderDto(row, batches, rejectReturns);
+        const vendorReturnShipments = parentVendorReturns.filter(
+          (shipment) => shipment.vendorOrderId === String(row._id),
+        );
+
+        return toAdminVendorOrderDto(
+          row,
+          batches,
+          rejectReturns,
+          vendorReturnShipments,
+          buildRejectionSummary(row, rejectionLines),
+        );
       }),
     );
 

@@ -1,8 +1,11 @@
 import { Types, type FilterQuery, type HydratedDocument } from 'mongoose';
 import { CategoryModel } from '../categories/category.model';
+import { ProductModel } from '../products/product.model';
 import { StoreModel, listedStoreFilter, type Store } from './store.model';
 import { StorePayoutModel, type StorePayout } from '../payments/store-payout.model';
 import type {
+  AdminStoreDto,
+  AdminStoreSummaryDto,
   PublicStoreDto,
   PublicStoreSummaryDto,
   StoreCategoryDto,
@@ -14,7 +17,12 @@ import { AppError } from '../../common/errors/AppError';
 import { duplicateKeyFields, isDuplicateKeyError } from '../../common/errors/mongoError';
 import { escapeRegex, slugify } from '../../common/utils/slugify';
 import { imageStorage, storeImageStorageKey } from '../../infrastructure/storage/imageStorage';
-import type { ListStoresQuery, SaveStorePayoutInput, UpdateStoreInput } from './store.validator';
+import type {
+  ListAdminStoresQuery,
+  ListStoresQuery,
+  SaveStorePayoutInput,
+  UpdateStoreInput,
+} from './store.validator';
 
 type AddressSource = {
   line1?: string;
@@ -74,6 +82,13 @@ const toSummary = (store: Store): PublicStoreSummaryDto => ({
   totalOrders: store.totalOrders,
   totalSales: store.totalSales,
   joinedAt: store.joinedAt.toISOString(),
+});
+
+const toAdminSummary = (store: Store): AdminStoreSummaryDto => ({
+  ...toSummary(store),
+  userId: String(store.userId),
+  isActive: store.isActive,
+  isSuspended: Boolean(store.suspendedAt),
 });
 
 const toPublicDto = (store: Store, categories: StoreCategoryDto[]): PublicStoreDto => ({
@@ -356,6 +371,17 @@ const vendorView = async (store: Store) => {
   return toVendorDto(store, categories, payout);
 };
 
+const removeStoreForUser = async (userId: string) => {
+  const store = await StoreModel.findOne({ userId }).select('logo banner');
+
+  await StorePayoutModel.deleteOne({ userId });
+  await StoreModel.deleteOne({ userId });
+
+  if (store) {
+    await releaseReplacedStoreImages([store.logo, store.banner], []);
+  }
+};
+
 export const storeService = {
   async ensureForVendor(seed: StoreSeed) {
     const existing = await StoreModel.findOne({ userId: seed.userId }).select('_id');
@@ -395,14 +421,7 @@ export const storeService = {
   },
 
   async removeForVendor(userId: string) {
-    const store = await StoreModel.findOne({ userId }).select('logo banner');
-
-    await StorePayoutModel.deleteOne({ userId });
-    await StoreModel.deleteOne({ userId });
-
-    if (store) {
-      await releaseReplacedStoreImages([store.logo, store.banner], []);
-    }
+    await removeStoreForUser(userId);
   },
 
   async setSuspendedForOwner(userId: string, suspended: boolean) {
@@ -435,6 +454,94 @@ export const storeService = {
       limit: query.limit,
       total,
     };
+  },
+
+  async listAdmin(query: ListAdminStoresQuery) {
+    const filter: FilterQuery<Store> = {};
+
+    if (query.visibility === 'listed') {
+      Object.assign(filter, listedStoreFilter);
+    } else if (query.visibility === 'hidden') {
+      filter.$or = [{ isActive: false }, { suspendedAt: { $ne: null } }];
+    }
+
+    if (query.categoryId) {
+      filter.categoryIds = query.categoryId;
+    }
+
+    if (query.search) {
+      filter.name = { $regex: escapeRegex(query.search), $options: 'i' };
+    }
+
+    const skip = (query.page - 1) * query.limit;
+    const [items, total] = await Promise.all([
+      StoreModel.find(filter).sort(SORTS[query.sort]).skip(skip).limit(query.limit).lean(),
+      StoreModel.countDocuments(filter),
+    ]);
+
+    return {
+      items: items.map((item) => toAdminSummary(item)),
+      page: query.page,
+      limit: query.limit,
+      total,
+    };
+  },
+
+  async getAdmin(id: string): Promise<AdminStoreDto> {
+    const store = await StoreModel.findById(id).lean();
+
+    if (!store) {
+      throw AppError.notFound('Store not found');
+    }
+
+    const vendor = await vendorView(store);
+
+    return {
+      ...vendor,
+      userId: String(store.userId),
+    };
+  },
+
+  async setAdminSuspended(storeId: string, suspended: boolean): Promise<AdminStoreDto> {
+    const store = await StoreModel.findById(storeId);
+
+    if (!store) {
+      throw AppError.notFound('Store not found');
+    }
+
+    store.suspendedAt = suspended ? new Date() : null;
+    await store.save();
+
+    return {
+      ...(await vendorView(store)),
+      userId: String(store.userId),
+    };
+  },
+
+  async removeAdmin(storeId: string) {
+    const store = await StoreModel.findById(storeId).select('userId totalProducts totalOrders');
+
+    if (!store) {
+      throw AppError.notFound('Store not found');
+    }
+
+    if (store.totalProducts > 0) {
+      throw AppError.conflict('Remove all products from this store before deleting it');
+    }
+
+    if (store.totalOrders > 0) {
+      throw AppError.conflict('Stores with order history cannot be deleted');
+    }
+
+    const productCount = await ProductModel.countDocuments({ storeId: store._id });
+
+    if (productCount > 0) {
+      throw AppError.conflict('Remove all products from this store before deleting it');
+    }
+
+    await removeStoreForUser(String(store.userId));
+
+    return { id: storeId };
   },
 
   async getPublicBySlug(slug: string) {

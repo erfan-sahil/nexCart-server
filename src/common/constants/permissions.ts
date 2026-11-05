@@ -15,6 +15,7 @@ export const Permission = {
   adminPromotions: 'admin:promotions',
   adminCommission: 'admin:commission',
   adminUsers: 'admin:users',
+  adminDashboard: 'admin:dashboard',
   adminPlatformSettings: 'admin:platform-settings',
 
   vendorStore: 'vendor:store',
@@ -60,6 +61,7 @@ const ADMIN_PERMISSIONS = [
   Permission.adminPromotions,
   Permission.adminCommission,
   Permission.adminUsers,
+  Permission.adminDashboard,
   Permission.adminPlatformSettings,
 ] as const satisfies readonly Permission[];
 

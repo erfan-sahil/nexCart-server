@@ -18,6 +18,7 @@ const ACTIVE_VENDOR_STATUSES = new Set([
   'delivered',
   'delivery_failed',
   'customer_rejected',
+  'partially_rejected',
 ]);
 
 const vendorMilestoneRank = (status: VendorOrder['status']) => {
@@ -38,6 +39,7 @@ const vendorMilestoneRank = (status: VendorOrder['status']) => {
     delivered: 4,
     delivery_failed: 3,
     customer_rejected: 3,
+    partially_rejected: 4,
   };
 
   return ranks[status] ?? 0;

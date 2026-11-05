@@ -39,6 +39,7 @@ export const VENDOR_ORDER_STATUSES = [
   'delivered',
   'delivery_failed',
   'customer_rejected',
+  'partially_rejected',
 ] as const;
 
 export const INBOUND_BATCH_STATUSES = [
@@ -118,6 +119,8 @@ export const IdempotencyScope = {
   adminVendorOrderStatus: 'admin.vendor_order.status',
   adminOrderStatus: 'admin.order.status',
   adminReturnAction: 'admin.return.action',
+  adminVendorReturnDispatch: 'admin.vendor_return.dispatch',
+  vendorReturnConfirmReceipt: 'vendor.vendor_return.confirm_receipt',
 } as const;
 
 export type OrderPaymentMethod = (typeof ORDER_PAYMENT_METHODS)[number];

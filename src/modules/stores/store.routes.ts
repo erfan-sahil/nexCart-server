@@ -1,18 +1,20 @@
 import type { RequestHandler } from 'express';
 import { Router } from 'express';
 import { Permission } from '../../common/constants/permissions';
-import { storeController } from './store.controller';
-import { requirePermissions } from '../../common/middleware/authorize';
-import { parseProductPayload } from '../products/parse-product-payload';
-import { preferStoreImageFiles, storeImageFiles, uploadStoreImages } from './upload-store-images';
 import { validate } from '../../common/middleware/validate';
+import { requirePermissions } from '../../common/middleware/authorize';
 import {
+  adminStoreSuspensionBodySchema,
+  listAdminStoresQuerySchema,
   listStoresQuerySchema,
   storeIdParamsSchema,
   storeSlugParamsSchema,
   updateStoreFieldsSchema,
   updateStoreSchema,
 } from './store.validator';
+import { storeController, storePermissions } from './store.controller';
+import { parseProductPayload } from '../products/parse-product-payload';
+import { preferStoreImageFiles, storeImageFiles, uploadStoreImages } from './upload-store-images';
 
 export const storeRouter = Router();
 
@@ -44,3 +46,33 @@ storeRouter.patch(
 );
 
 storeRouter.get('/:id', validate({ params: storeIdParamsSchema }), storeController.getStore);
+
+export const adminStoreRouter = Router();
+
+adminStoreRouter.get(
+  '/',
+  ...requirePermissions(storePermissions.admin),
+  validate({ query: listAdminStoresQuerySchema }),
+  storeController.listAdmin,
+);
+
+adminStoreRouter.get(
+  '/:id',
+  ...requirePermissions(storePermissions.admin),
+  validate({ params: storeIdParamsSchema }),
+  storeController.getAdmin,
+);
+
+adminStoreRouter.patch(
+  '/:id/suspension',
+  ...requirePermissions(storePermissions.admin),
+  validate({ params: storeIdParamsSchema, body: adminStoreSuspensionBodySchema }),
+  storeController.setAdminSuspension,
+);
+
+adminStoreRouter.delete(
+  '/:id',
+  ...requirePermissions(storePermissions.admin),
+  validate({ params: storeIdParamsSchema }),
+  storeController.removeAdmin,
+);

@@ -136,6 +136,10 @@ export const listStoresQuerySchema = z.object({
     .default('-joinedAt'),
 });
 
+export const listAdminStoresQuerySchema = listStoresQuerySchema.extend({
+  visibility: z.enum(['all', 'listed', 'hidden']).default('all'),
+});
+
 export const storeIdParamsSchema = z.object({
   id: objectIdSchema,
 });
@@ -144,6 +148,14 @@ export const storeSlugParamsSchema = z.object({
   slug: slugSchema,
 });
 
+export const adminStoreSuspensionBodySchema = z
+  .object({
+    suspended: z.boolean(),
+  })
+  .strict();
+
 export type UpdateStoreInput = z.infer<typeof updateStoreSchema>;
 export type ListStoresQuery = z.infer<typeof listStoresQuerySchema>;
+export type ListAdminStoresQuery = z.infer<typeof listAdminStoresQuerySchema>;
+export type AdminStoreSuspensionInput = z.infer<typeof adminStoreSuspensionBodySchema>;
 export type SaveStorePayoutInput = NonNullable<UpdateStoreInput['payout']>;
