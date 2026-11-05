@@ -9,10 +9,16 @@ import { ProductModel } from '../modules/products/product.model';
 import { ProductVariantModel } from '../modules/products/product-variant.model';
 import { StoreModel, listedStoreFilter } from '../modules/stores/store.model';
 import { UserModel } from '../modules/users/user.model';
+import { attributeService } from '../modules/attributes/attribute.service';
 import { variantService } from '../modules/products/variant.service';
-import { variantOptionKey } from '../modules/products/variant-attributes';
+import {
+  normalizeVariantAttributes,
+  variantOptionKey,
+} from '../modules/products/variant-attributes';
 import { logger } from '../common/utils/logger';
-import { productSeed, type ProductSeed } from './productSeed';
+import { featuresForProduct, productSeed, type ProductSeed } from './productSeed';
+import { ensureVariantCatalog } from './seedVariantAttributes';
+import { buildVariantAttributeInputs, variantsForProduct } from './variantSeed';
 
 const DEMO_EMAIL = 'catalog@nexcart.local';
 const DEMO_STORE_SLUG = 'nexcart-catalog';
@@ -98,11 +104,13 @@ async function upsertProduct(
     alt: item.name,
     sortOrder: 0,
   };
+  const features = featuresForProduct(item);
   const fields = {
     categoryId,
     name: item.name,
     shortDescription: item.shortDescription,
-    description: item.description,
+    description: features.length > 0 ? features.join('\n') : item.description,
+    features,
     images: [image],
     thumbnailId: imageId,
     tags: item.tags,
@@ -140,11 +148,77 @@ async function upsertProduct(
   });
 }
 
-async function upsertVariant(productId: Types.ObjectId, item: ProductSeed, imageId: string) {
-  const discount = item.discountPercent
+async function syncProductVariants(
+  productId: Types.ObjectId,
+  categoryId: Types.ObjectId,
+  item: ProductSeed,
+  imageId: string,
+) {
+  const seeds = variantsForProduct(item);
+  await ProductVariantModel.deleteMany({ productId });
+
+  if (!seeds?.length) {
+    await createVariantRow(productId, {
+      sku: skuFor(item.slug),
+      price: item.price,
+      stock: item.stock,
+      isDefault: true,
+      discountPercent: item.discountPercent,
+      attributes: [],
+      optionKey: variantOptionKey([]),
+      imageId,
+    });
+    return;
+  }
+
+  const assignments = await attributeService.listForCategory(String(categoryId));
+  let defaultSet = false;
+
+  for (let index = 0; index < seeds.length; index += 1) {
+    const seed = seeds[index];
+
+    if (!seed) {
+      continue;
+    }
+
+    const inputs = buildVariantAttributeInputs(seed.options, assignments);
+    const attributes = normalizeVariantAttributes(inputs, assignments);
+    const isDefault = seed.isDefault === true || (!defaultSet && index === 0);
+
+    if (isDefault) {
+      defaultSet = true;
+    }
+
+    await createVariantRow(productId, {
+      sku: seed.sku,
+      price: seed.price,
+      stock: seed.stock,
+      isDefault,
+      discountPercent: seed.discountPercent,
+      attributes,
+      optionKey: variantOptionKey(attributes),
+      imageId,
+    });
+  }
+}
+
+async function createVariantRow(
+  productId: Types.ObjectId,
+  row: {
+    sku: string;
+    price: number;
+    stock: number;
+    isDefault: boolean;
+    discountPercent?: number;
+    attributes: ReturnType<typeof normalizeVariantAttributes>;
+    optionKey: string;
+    imageId: string;
+  },
+) {
+  const discount = row.discountPercent
     ? {
         discountType: 'percent' as const,
-        discountValue: item.discountPercent,
+        discountValue: row.discountPercent,
         ...dealWindow(),
       }
     : {
@@ -153,35 +227,19 @@ async function upsertVariant(productId: Types.ObjectId, item: ProductSeed, image
         dealStartsAt: null,
         dealEndsAt: null,
       };
-  const sku = skuFor(item.slug);
-  const payload = {
+
+  await ProductVariantModel.create({
     productId,
-    sku,
-    price: item.price,
+    sku: row.sku.toUpperCase(),
+    price: row.price,
     ...discount,
-    stock: item.stock,
-    imageId,
-    attributes: [],
-    optionKey: variantOptionKey([]),
-    status: 'active' as const,
-    isDefault: true,
-  };
-
-  const current =
-    (await ProductVariantModel.findOne({ productId, isDefault: true })) ??
-    (await ProductVariantModel.findOne({ sku }));
-
-  if (current && String(current.productId) !== String(productId)) {
-    throw new Error(`SKU ${sku} already belongs to another product`);
-  }
-
-  if (current) {
-    current.set(payload);
-    await current.save();
-    return;
-  }
-
-  await ProductVariantModel.create(payload);
+    stock: row.stock,
+    imageId: row.imageId,
+    attributes: row.attributes,
+    optionKey: row.optionKey,
+    status: 'active',
+    isDefault: row.isDefault,
+  });
 }
 
 async function syncStores(storeIds: Types.ObjectId[], categoryIds: Types.ObjectId[]) {
@@ -230,6 +288,8 @@ async function seedProducts() {
     );
   }
 
+  await ensureVariantCatalog();
+
   const now = Date.now();
 
   for (let index = 0; index < productSeed.length; index += 1) {
@@ -253,7 +313,7 @@ async function seedProducts() {
 
     const product = await upsertProduct(item, categoryId, storeId, new Date(now - index * DAY_MS));
 
-    await upsertVariant(product._id, item, imageIdFor(item.slug));
+    await syncProductVariants(product._id, categoryId, item, imageIdFor(item.slug));
   }
 
   await variantService.rebuildListings();
@@ -262,7 +322,16 @@ async function seedProducts() {
   const total = await ProductModel.countDocuments({
     slug: { $in: productSeed.map((item) => item.slug) },
   });
-  logger.info('Product seed complete', { total });
+  const multiVariantProducts = await ProductVariantModel.aggregate<{ count: number }>([
+    { $group: { _id: '$productId', variants: { $sum: 1 } } },
+    { $match: { variants: { $gt: 1 } } },
+    { $count: 'count' },
+  ]);
+  logger.info('Product seed complete', {
+    total,
+    multiVariantProducts: multiVariantProducts[0]?.count ?? 0,
+    variants: await ProductVariantModel.countDocuments(),
+  });
   await disconnectDatabase();
 }
 

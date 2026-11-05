@@ -66,6 +66,7 @@ type ProductSource = {
   slug: string;
   shortDescription: string;
   description: string;
+  features: string[];
   images: ImageSource[];
   thumbnailId: string;
   attributes: AttributeSource[];
@@ -454,6 +455,7 @@ const readProduct = (product: ProductDocument): ProductSource => {
     slug: plain.slug,
     shortDescription: plain.shortDescription ?? '',
     description: plain.description ?? '',
+    features: [...(plain.features ?? [])],
     images: (plain.images ?? []).map((image) => ({
       id: image.imageId,
       provider: image.provider,
@@ -594,6 +596,7 @@ const mapProducts = async (products: ProductSource[]): Promise<ProductDto[]> => 
       slug: product.slug,
       shortDescription: product.shortDescription,
       description: product.description,
+      features: product.features,
       images,
       thumbnail: images.find((image) => image.id === product.thumbnailId) ?? null,
       offer: offers.get(String(product._id)) ?? emptyOffer(),
@@ -782,7 +785,8 @@ export const productService = {
       name: input.name,
       slug,
       shortDescription: input.shortDescription ?? '',
-      description: input.description ?? '',
+      description: input.features?.length ? input.features.join('\n') : (input.description ?? ''),
+      features: input.features ?? [],
       tags: uniqueTags(input.tags ?? []),
       status: nextStatus,
       approvalStatus: 'pending',
@@ -831,7 +835,10 @@ export const productService = {
       product.shortDescription = input.shortDescription;
     }
 
-    if (input.description !== undefined) {
+    if (input.features !== undefined) {
+      product.features = input.features;
+      product.description = input.features.join('\n');
+    } else if (input.description !== undefined) {
       product.description = input.description;
     }
 

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+  MAX_PRODUCT_FEATURE_LENGTH,
+  MAX_PRODUCT_FEATURES,
   MAX_PRODUCT_IMAGES,
   PRODUCT_APPROVAL_STATUSES,
   PRODUCT_IMAGE_ID,
@@ -70,6 +72,10 @@ const productFields = {
   slug: slugSchema.optional(),
   shortDescription: z.string().trim().max(300).optional(),
   description: z.string().trim().max(10_000).optional(),
+  features: z
+    .array(z.string().trim().min(1).max(MAX_PRODUCT_FEATURE_LENGTH))
+    .max(MAX_PRODUCT_FEATURES)
+    .optional(),
   categoryId: objectIdSchema,
   tags: z.array(tagSchema).max(20).optional(),
   attributes: z.array(attributeValueSchema).max(100).optional(),
@@ -169,6 +175,7 @@ export const updateProductSchema = z
     slug: productFields.slug,
     shortDescription: productFields.shortDescription,
     description: productFields.description,
+    features: productFields.features,
     categoryId: productFields.categoryId.optional(),
     tags: productFields.tags,
     attributes: productFields.attributes,

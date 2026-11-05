@@ -122,7 +122,7 @@ export const resolveCheckoutLines = async (lines: CheckoutLineInput[]): Promise<
     }
 
     const product = await ProductModel.findById(variant.productId).select(
-      'name storeId status isPublished approvalStatus',
+      'name storeId status isPublished approvalStatus images thumbnailId',
     );
 
     if (!product || !isListedProduct(product)) {
@@ -151,6 +151,8 @@ export const resolveCheckoutLines = async (lines: CheckoutLineInput[]): Promise<
         : null,
     );
 
+    const thumbnail = product.images.find((image) => image.imageId === product.thumbnailId);
+
     resolved.push({
       variantId: String(variant._id),
       productId: String(product._id),
@@ -161,6 +163,7 @@ export const resolveCheckoutLines = async (lines: CheckoutLineInput[]): Promise<
       quantity: line.quantity,
       unitPrice,
       lineTotal: money(unitPrice * line.quantity),
+      imageUrl: thumbnail?.url ?? product.images[0]?.url ?? '',
       productObjectId: product._id,
       variantObjectId: variant._id,
       storeObjectId: store!._id,

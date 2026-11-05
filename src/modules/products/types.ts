@@ -68,6 +68,7 @@ export type ProductDto = {
   slug: string;
   shortDescription: string;
   description: string;
+  features: string[];
   images: ProductImageDto[];
   thumbnail: ProductImageDto | null;
   attributes: ProductAttributeDto[];

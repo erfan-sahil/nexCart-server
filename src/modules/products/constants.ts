@@ -22,6 +22,10 @@ export const PRODUCT_IMAGE_ID = /^img_[a-f0-9]{24}$/;
 
 export const MAX_PRODUCT_IMAGES = 8;
 
+export const MAX_PRODUCT_FEATURES = 30;
+
+export const MAX_PRODUCT_FEATURE_LENGTH = 160;
+
 export const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
 
 export type ProductImageMimeType = (typeof PRODUCT_IMAGE_MIME_TYPES)[number];

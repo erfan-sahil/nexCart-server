@@ -98,6 +98,7 @@ export const toVendorOrderDto = (row: VendorOrder): VendorOrderDto => ({
     acceptedQtyCumulative: item.acceptedQtyCumulative ?? 0,
     unitPrice: item.unitPrice,
     lineTotal: item.lineTotal,
+    imageUrl: '',
   })),
   itemsSubtotal: row.itemsSubtotal,
   createdAt: row.createdAt.toISOString(),
