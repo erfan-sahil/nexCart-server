@@ -1,11 +1,12 @@
 import type { Request, Response } from 'express';
+import { Permission } from '../../common/constants/permissions';
 import { storeImageFiles } from './upload-store-images';
 import { imageStorage } from '../../infrastructure/storage/imageStorage';
 import { storeService } from './store.service';
 import { AppError } from '../../common/errors/AppError';
 import { asyncHandler } from '../../common/http/asyncHandler';
 import { sendPaginated, sendSuccess } from '../../common/http/sendResponse';
-import type { ListStoresQuery, UpdateStoreInput } from './store.validator';
+import type { ListAdminStoresQuery, ListStoresQuery, UpdateStoreInput } from './store.validator';
 import type { ImageOptimizeProfile } from '../../infrastructure/storage/imageOptimizer';
 
 const routeParam = (value: string | string[] | undefined) =>
@@ -28,6 +29,23 @@ const listStores = asyncHandler(async (req: Request, res: Response) => {
     limit: result.limit,
     total: result.total,
   });
+});
+
+const listAdmin = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query as unknown as ListAdminStoresQuery;
+  const result = await storeService.listAdmin(query);
+
+  sendPaginated(res, result.items, {
+    page: result.page,
+    limit: result.limit,
+    total: result.total,
+  });
+});
+
+const getAdmin = asyncHandler(async (req: Request, res: Response) => {
+  const store = await storeService.getAdmin(routeParam(req.params.id));
+
+  sendSuccess(res, store, { message: 'Store fetched' });
 });
 
 const getStoreBySlug = asyncHandler(async (req: Request, res: Response) => {
@@ -120,8 +138,14 @@ const updateMine = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, store, { message: 'Store updated' });
 });
 
+export const storePermissions = {
+  admin: Permission.adminUsers,
+} as const;
+
 export const storeController = {
   listStores,
+  listAdmin,
+  getAdmin,
   getStoreBySlug,
   getStore,
   getMine,

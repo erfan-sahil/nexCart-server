@@ -1,1 +1,1 @@
-export { storeRouter } from './store.routes';
+export { adminStoreRouter, storeRouter } from './store.routes';

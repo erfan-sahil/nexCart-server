@@ -47,6 +47,16 @@ export type VendorStoreDto = PublicStoreDto & {
   payout: StorePayoutDto | null;
 };
 
+export type AdminStoreSummaryDto = PublicStoreSummaryDto & {
+  userId: string;
+  isActive: boolean;
+  isSuspended: boolean;
+};
+
+export type AdminStoreDto = VendorStoreDto & {
+  userId: string;
+};
+
 export type BankPayoutDto = {
   method: 'bank';
   accountHolderName: string;
