@@ -1,5 +1,6 @@
 import { Types, type FilterQuery, type HydratedDocument } from 'mongoose';
 import { CategoryModel } from '../categories/category.model';
+import { ProductModel } from '../products/product.model';
 import { StoreModel, listedStoreFilter, type Store } from './store.model';
 import { StorePayoutModel, type StorePayout } from '../payments/store-payout.model';
 import type {
@@ -370,6 +371,17 @@ const vendorView = async (store: Store) => {
   return toVendorDto(store, categories, payout);
 };
 
+const removeStoreForUser = async (userId: string) => {
+  const store = await StoreModel.findOne({ userId }).select('logo banner');
+
+  await StorePayoutModel.deleteOne({ userId });
+  await StoreModel.deleteOne({ userId });
+
+  if (store) {
+    await releaseReplacedStoreImages([store.logo, store.banner], []);
+  }
+};
+
 export const storeService = {
   async ensureForVendor(seed: StoreSeed) {
     const existing = await StoreModel.findOne({ userId: seed.userId }).select('_id');
@@ -409,14 +421,7 @@ export const storeService = {
   },
 
   async removeForVendor(userId: string) {
-    const store = await StoreModel.findOne({ userId }).select('logo banner');
-
-    await StorePayoutModel.deleteOne({ userId });
-    await StoreModel.deleteOne({ userId });
-
-    if (store) {
-      await releaseReplacedStoreImages([store.logo, store.banner], []);
-    }
+    await removeStoreForUser(userId);
   },
 
   async setSuspendedForOwner(userId: string, suspended: boolean) {
@@ -495,6 +500,48 @@ export const storeService = {
       ...vendor,
       userId: String(store.userId),
     };
+  },
+
+  async setAdminSuspended(storeId: string, suspended: boolean): Promise<AdminStoreDto> {
+    const store = await StoreModel.findById(storeId);
+
+    if (!store) {
+      throw AppError.notFound('Store not found');
+    }
+
+    store.suspendedAt = suspended ? new Date() : null;
+    await store.save();
+
+    return {
+      ...(await vendorView(store)),
+      userId: String(store.userId),
+    };
+  },
+
+  async removeAdmin(storeId: string) {
+    const store = await StoreModel.findById(storeId).select('userId totalProducts totalOrders');
+
+    if (!store) {
+      throw AppError.notFound('Store not found');
+    }
+
+    if (store.totalProducts > 0) {
+      throw AppError.conflict('Remove all products from this store before deleting it');
+    }
+
+    if (store.totalOrders > 0) {
+      throw AppError.conflict('Stores with order history cannot be deleted');
+    }
+
+    const productCount = await ProductModel.countDocuments({ storeId: store._id });
+
+    if (productCount > 0) {
+      throw AppError.conflict('Remove all products from this store before deleting it');
+    }
+
+    await removeStoreForUser(String(store.userId));
+
+    return { id: storeId };
   },
 
   async getPublicBySlug(slug: string) {

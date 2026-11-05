@@ -4,6 +4,7 @@ import { Permission } from '../../common/constants/permissions';
 import { validate } from '../../common/middleware/validate';
 import { requirePermissions } from '../../common/middleware/authorize';
 import {
+  adminStoreSuspensionBodySchema,
   listAdminStoresQuerySchema,
   listStoresQuerySchema,
   storeIdParamsSchema,
@@ -60,4 +61,18 @@ adminStoreRouter.get(
   ...requirePermissions(storePermissions.admin),
   validate({ params: storeIdParamsSchema }),
   storeController.getAdmin,
+);
+
+adminStoreRouter.patch(
+  '/:id/suspension',
+  ...requirePermissions(storePermissions.admin),
+  validate({ params: storeIdParamsSchema, body: adminStoreSuspensionBodySchema }),
+  storeController.setAdminSuspension,
+);
+
+adminStoreRouter.delete(
+  '/:id',
+  ...requirePermissions(storePermissions.admin),
+  validate({ params: storeIdParamsSchema }),
+  storeController.removeAdmin,
 );
