@@ -31,6 +31,7 @@ import {
 } from './modules/returns/vendor-return-shipment.routes';
 import { adminFinanceReportRouter } from './modules/reports/finance-report.routes';
 import { adminDashboardRouter } from './modules/dashboard';
+import { vendorAnalyticsRouter, vendorDashboardRouter } from './modules/vendor-dashboard';
 import { sslcommerzRouter } from './modules/payments';
 import { productReportInboxRouter, productReportOnProductRouter } from './modules/product-reports';
 import { productRouter } from './modules/products';
@@ -86,3 +87,5 @@ apiRouter.use('/vendor/vendor-return-shipments', vendorVendorReturnShipmentRoute
 apiRouter.use('/admin/vendor-return-shipments', adminVendorReturnShipmentRouter);
 apiRouter.use('/admin/finance/reports', adminFinanceReportRouter);
 apiRouter.use('/admin/dashboard', adminDashboardRouter);
+apiRouter.use('/vendor/dashboard', vendorDashboardRouter);
+apiRouter.use('/vendor/analytics', vendorAnalyticsRouter);

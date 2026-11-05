@@ -76,6 +76,7 @@ const returnRequestSchema = new Schema(
   { timestamps: true, versionKey: false },
 );
 
+returnRequestSchema.index({ storeId: 1, createdAt: -1 });
 returnRequestSchema.index({ vendorOrderId: 1, createdAt: -1 });
 returnRequestSchema.index({ parentOrderId: 1, createdAt: -1 });
 returnRequestSchema.index({ status: 1, createdAt: -1 });

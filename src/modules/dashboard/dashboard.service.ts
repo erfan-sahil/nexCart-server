@@ -10,63 +10,22 @@ import { WithdrawalModel } from '../withdrawals/withdrawal.model';
 import {
   COD_OUTSTANDING_REMITTANCE_STATUSES,
   DASHBOARD_QUEUE_PATHS,
-  DASHBOARD_RANGE_DAYS,
   PRODUCT_APPROVAL_QUEUE_STATUSES,
   RETURN_TERMINAL_STATUSES,
   VENDOR_APPLICATION_REVIEW_STATUSES,
   type DashboardRange,
 } from './dashboard.constants';
+import { fillSeries, getWindows, money, periodMetric, type TimeWindow } from './analytics-period';
 import type {
   DashboardAttentionQueue,
   DashboardOverview,
-  DashboardPeriodMetric,
   DashboardRecentOrder,
   DashboardRecentVendorApplication,
   DashboardSalesPoint,
 } from './dashboard.types';
 
-const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-
 const vendorOrderRevenueMatch = {
   status: { $ne: 'cancelled' as const },
-};
-
-type TimeWindow = {
-  start: Date;
-  end: Date;
-};
-
-const getWindows = (
-  range: DashboardRange,
-): { current: TimeWindow; previous: TimeWindow; days: number } => {
-  const days = DASHBOARD_RANGE_DAYS[range];
-  const end = new Date();
-  const currentStart = new Date(end);
-  currentStart.setTime(currentStart.getTime() - days * 24 * 60 * 60 * 1000);
-
-  const previousEnd = new Date(currentStart);
-  const previousStart = new Date(previousEnd);
-  previousStart.setTime(previousStart.getTime() - days * 24 * 60 * 60 * 1000);
-
-  return {
-    current: { start: currentStart, end },
-    previous: { start: previousStart, end: previousEnd },
-    days,
-  };
-};
-
-const periodMetric = (current: number, previous: number): DashboardPeriodMetric => {
-  const roundedCurrent = money(current);
-  const roundedPrevious = money(previous);
-  let changePercent: number | null = null;
-  if (roundedPrevious !== 0) {
-    changePercent = money(((roundedCurrent - roundedPrevious) / roundedPrevious) * 100);
-  }
-  return {
-    current: roundedCurrent,
-    previous: roundedPrevious,
-    changePercent,
-  };
 };
 
 const sumVendorOrderRevenue = async (window: TimeWindow) => {
@@ -127,22 +86,16 @@ const buildSalesSeries = async (
     },
   ]);
 
-  const byDate = new Map(rows.map((row) => [row._id, money(row.gmv)]));
-
-  const series: DashboardSalesPoint[] = [];
-  const cursor = new Date(window.start);
-  cursor.setUTCHours(0, 0, 0, 0);
-
-  for (let i = 0; i < days; i += 1) {
-    const dateKey = cursor.toISOString().slice(0, 10);
-    series.push({
-      date: dateKey,
-      gmv: byDate.get(dateKey) ?? 0,
-    });
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-
-  return series;
+  return fillSeries(window, {
+    bucket: 'day',
+    bucketCount: days,
+    timezone: 'UTC',
+    rows: rows.map((row) => ({
+      key: row._id,
+      values: { gmv: money(row.gmv) },
+    })),
+    defaults: { gmv: 0 },
+  });
 };
 
 const suspendedStoreFilter = {
