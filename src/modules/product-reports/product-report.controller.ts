@@ -65,14 +65,23 @@ const updateStatus = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, result, { message: 'Report updated' });
 });
 
+const remove = asyncHandler(async (req: Request, res: Response) => {
+  const reportId = param(req.params.reportId);
+  const result = await productReportService.remove(reportId);
+
+  sendSuccess(res, result, { message: 'Report deleted' });
+});
+
 export const productReportController = {
   create,
   getMine,
   list,
   updateStatus,
+  remove,
 };
 
 export const productReportPermissions = {
   list: Permission.adminProductReports,
   updateStatus: Permission.adminProductReports,
+  delete: Permission.adminProductReports,
 };

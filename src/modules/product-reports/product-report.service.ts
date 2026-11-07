@@ -140,9 +140,20 @@ const updateStatus = async (reportId: string, input: UpdateProductReportStatusIn
   return { report: mapped! };
 };
 
+const remove = async (reportId: string) => {
+  const deleted = await ProductReportModel.findByIdAndDelete(reportId).lean();
+
+  if (!deleted) {
+    throw AppError.notFound('Report not found');
+  }
+
+  return { id: reportId };
+};
+
 export const productReportService = {
   create,
   getMine,
   list,
   updateStatus,
+  remove,
 };
