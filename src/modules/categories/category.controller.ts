@@ -3,6 +3,7 @@ import { categoryService } from './category.service';
 import { imageStorage } from '../../infrastructure/storage/imageStorage';
 import { AppError } from '../../common/errors/AppError';
 import { asyncHandler } from '../../common/http/asyncHandler';
+import { publicFileUrl } from '../../common/http/publicFileUrl';
 import { sendCreated, sendPaginated, sendSuccess } from '../../common/http/sendResponse';
 import type {
   CreateCategoryInput,
@@ -46,16 +47,6 @@ const getCategoryBySlug = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, category, { message: 'Category fetched' });
 });
 
-const absoluteUploadUrl = (req: Request, url: string) => {
-  const host = req.get('host');
-
-  if (!host) {
-    throw AppError.internal('Could not build the file URL');
-  }
-
-  return `${req.protocol}://${host}${url}`;
-};
-
 const uploadCategoryImage = asyncHandler(async (req: Request, res: Response) => {
   const file = req.file;
 
@@ -71,7 +62,7 @@ const uploadCategoryImage = asyncHandler(async (req: Request, res: Response) => 
 
   sendSuccess(
     res,
-    { url: absoluteUploadUrl(req, stored.url) },
+    { url: publicFileUrl(req, stored.url) },
     { statusCode: 201, message: 'Category image uploaded' },
   );
 });

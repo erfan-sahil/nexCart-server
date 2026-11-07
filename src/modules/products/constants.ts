@@ -2,7 +2,7 @@ export const PRODUCT_STATUSES = ['active', 'archived'] as const;
 
 export const PRODUCT_APPROVAL_STATUSES = ['pending', 'submitted', 'approved', 'rejected'] as const;
 
-export const IMAGE_PROVIDERS = ['local'] as const;
+export const IMAGE_PROVIDERS = ['local', 'cloudinary'] as const;
 
 export const PRODUCT_IMAGE_MIME_TYPES = [
   'image/jpeg',
@@ -32,3 +32,6 @@ export type ProductImageMimeType = (typeof PRODUCT_IMAGE_MIME_TYPES)[number];
 
 export const isProductImageMimeType = (value: string): value is ProductImageMimeType =>
   (PRODUCT_IMAGE_MIME_TYPES as readonly string[]).includes(value);
+
+export const isImageProvider = (value: string): value is (typeof IMAGE_PROVIDERS)[number] =>
+  (IMAGE_PROVIDERS as readonly string[]).includes(value);

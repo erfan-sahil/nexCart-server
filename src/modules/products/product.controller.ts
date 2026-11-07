@@ -4,6 +4,7 @@ import { productService } from './product.service';
 import type { ProductViewer } from './types';
 import { AppError } from '../../common/errors/AppError';
 import { asyncHandler } from '../../common/http/asyncHandler';
+import { publicFileUrl } from '../../common/http/publicFileUrl';
 import { sendCreated, sendPaginated, sendSuccess } from '../../common/http/sendResponse';
 import type {
   ApproveProductInput,
@@ -100,16 +101,6 @@ const getProduct = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, product, { message: 'Product fetched' });
 });
 
-const absoluteUploadUrl = (req: Request, url: string) => {
-  const host = req.get('host');
-
-  if (!host) {
-    throw AppError.internal('Could not build the file URL');
-  }
-
-  return `${req.protocol}://${host}${url}`;
-};
-
 const uploadProductImage = asyncHandler(async (req: Request, res: Response) => {
   const file = req.file;
 
@@ -125,7 +116,7 @@ const uploadProductImage = asyncHandler(async (req: Request, res: Response) => {
 
   sendSuccess(
     res,
-    { url: absoluteUploadUrl(req, stored.url) },
+    { url: publicFileUrl(req, stored.url) },
     { statusCode: 201, message: 'Product image uploaded' },
   );
 });

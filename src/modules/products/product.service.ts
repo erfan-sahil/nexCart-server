@@ -1,5 +1,5 @@
 import { Types, type FilterQuery, type HydratedDocument } from 'mongoose';
-import { MAX_PRODUCT_IMAGES } from './constants';
+import { MAX_PRODUCT_IMAGES, isImageProvider } from './constants';
 import { Permission, roleHasPermission } from '../../common/constants/permissions';
 import { attributeService } from '../attributes/attribute.service';
 import { imageStorage } from '../../infrastructure/storage/imageStorage';
@@ -140,7 +140,7 @@ const toApprovalStatus = (status: string): ProductApprovalStatus => {
 };
 
 const toProvider = (provider: string): ImageProvider => {
-  if (provider === 'local') {
+  if (isImageProvider(provider)) {
     return provider;
   }
 
@@ -433,7 +433,7 @@ const adjustProductCount = async (storeId: Types.ObjectId, delta: number) => {
 };
 
 const deleteStoredImage = async (image: { provider: string; storageKey: string }) => {
-  if (image.provider !== 'local') {
+  if (!isImageProvider(image.provider)) {
     return;
   }
 

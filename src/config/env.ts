@@ -54,6 +54,15 @@ const envSchema = z.object({
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
   UPLOAD_DIR: z.string().trim().min(1).default('uploads'),
+  IMAGE_STORAGE_DRIVER: z.enum(['local', 'cloudinary']).default('local'),
+  CLOUDINARY_CLOUD_NAME: z.string().trim().default(''),
+  CLOUDINARY_API_KEY: z.string().trim().default(''),
+  CLOUDINARY_API_SECRET: z.string().trim().default(''),
+  CLOUDINARY_FOLDER: z
+    .string()
+    .trim()
+    .regex(/^[a-z0-9_-]+$/, 'Use lowercase letters, numbers, dashes, or underscores')
+    .default('nexcart'),
   ORDER_DELIVERY_FEE: z.coerce.number().min(0).default(100),
   ORDER_PAYMENT_HOLD_MINUTES: z.coerce.number().int().positive().default(30),
   ORDER_CURRENCY: z.string().trim().length(3).default('BDT'),
@@ -93,6 +102,15 @@ if (
 ) {
   throw new Error(
     'Set distinct JWT_ACCESS_SECRET and JWT_REFRESH_SECRET values before running in production',
+  );
+}
+
+if (
+  env.IMAGE_STORAGE_DRIVER === 'cloudinary' &&
+  (!env.CLOUDINARY_CLOUD_NAME || !env.CLOUDINARY_API_KEY || !env.CLOUDINARY_API_SECRET)
+) {
+  throw new Error(
+    'Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET when IMAGE_STORAGE_DRIVER=cloudinary',
   );
 }
 

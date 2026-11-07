@@ -3,6 +3,7 @@ import { imageStorage } from '../../infrastructure/storage/imageStorage';
 import { vendorApplicationService } from './vendor-application.service';
 import { AppError } from '../../common/errors/AppError';
 import { asyncHandler } from '../../common/http/asyncHandler';
+import { publicFileUrl } from '../../common/http/publicFileUrl';
 import { sendPaginated, sendSuccess } from '../../common/http/sendResponse';
 import type {
   ListVendorApplicationsQuery,
@@ -50,16 +51,6 @@ const updateMineBusinessRecords = asyncHandler(async (req: Request, res: Respons
   sendSuccess(res, application, { message: 'Business records updated' });
 });
 
-const absoluteUploadUrl = (req: Request, url: string) => {
-  const host = req.get('host');
-
-  if (!host) {
-    throw AppError.internal('Could not build the file URL');
-  }
-
-  return `${req.protocol}://${host}${url}`;
-};
-
 const uploadMineSelfie = asyncHandler(async (req: Request, res: Response) => {
   const file = req.file;
 
@@ -72,7 +63,7 @@ const uploadMineSelfie = asyncHandler(async (req: Request, res: Response) => {
 
   sendSuccess(
     res,
-    { url: absoluteUploadUrl(req, stored.url) },
+    { url: publicFileUrl(req, stored.url) },
     { statusCode: 201, message: 'Selfie uploaded' },
   );
 });
@@ -92,7 +83,7 @@ const uploadMineFile = asyncHandler(async (req: Request, res: Response) => {
 
   sendSuccess(
     res,
-    { url: absoluteUploadUrl(req, stored.url) },
+    { url: publicFileUrl(req, stored.url) },
     { statusCode: 201, message: 'File uploaded' },
   );
 });
