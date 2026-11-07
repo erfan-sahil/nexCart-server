@@ -89,7 +89,7 @@ const updateStoreObjectSchema = z
     description: z.string().trim().max(2000).optional(),
     contact: contactSchema.optional(),
     address: addressSchema.optional(),
-    categoryIds: z.array(objectIdSchema).min(1).max(20).optional(),
+    categoryIds: z.array(objectIdSchema).min(1).optional(),
     returnPolicy: z.string().trim().max(2000).optional(),
     shippingPolicy: z.string().trim().max(2000).optional(),
     isActive: z.boolean().optional(),
