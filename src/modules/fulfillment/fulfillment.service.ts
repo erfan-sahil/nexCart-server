@@ -530,6 +530,34 @@ export const fulfillmentService = {
     };
   },
 
+  async updateCourierDetails(
+    _adminId: string,
+    orderId: string,
+    input: { carrier: string; trackingNumber: string },
+  ) {
+    const order = await requireConfirmedOrder(orderId);
+    const shipment = await ShipmentModel.findOne({ orderId: order._id });
+
+    if (!shipment) {
+      throw AppError.notFound('Shipment not found');
+    }
+
+    const editable = ['dispatched', 'in_transit', 'out_for_delivery', 'delivered'];
+
+    if (!editable.includes(shipment.status)) {
+      throw AppError.validation('Courier details can only be edited after dispatch');
+    }
+
+    shipment.carrier = input.carrier;
+    shipment.trackingNumber = input.trackingNumber;
+    await shipment.save();
+
+    return {
+      orderId: String(order._id),
+      shipment: toShipmentDto(shipment),
+    };
+  },
+
   async advanceShipment(
     _adminId: string,
     orderId: string,
