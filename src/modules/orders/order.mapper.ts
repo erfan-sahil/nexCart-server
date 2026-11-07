@@ -42,11 +42,24 @@ const toDeliveryOutcome = (shipmentStatus?: string | null) => {
   return null;
 };
 
+const productImageUrl = (product: Pick<Product, 'thumbnailId' | 'images'> | undefined) => {
+  if (!product) {
+    return '';
+  }
+
+  const thumbnail = product.images.find((image) => image.imageId === product.thumbnailId);
+
+  return thumbnail?.url ?? product.images[0]?.url ?? '';
+};
+
+export type OrderProductImageSource = Pick<Product, 'slug' | 'thumbnailId' | 'images'>;
+
 export const toOrderDto = (
   order: Order,
   vendorOrders?: Pick<VendorOrder, 'status'>[],
   shipmentStatus?: string | null,
   refundStatus?: string | null,
+  products?: Map<string, OrderProductImageSource>,
 ): OrderDto => ({
   id: String(order._id),
   orderNumber: order.orderNumber,
@@ -68,6 +81,7 @@ export const toOrderDto = (
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     lineTotal: item.lineTotal,
+    imageUrl: productImageUrl(products?.get(String(item.productId))),
   })),
   totals: {
     itemsSubtotal: order.itemsSubtotal,
@@ -90,16 +104,6 @@ export const toOrderDto = (
 });
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
-
-const productImageUrl = (product: Pick<Product, 'thumbnailId' | 'images'> | undefined) => {
-  if (!product) {
-    return '';
-  }
-
-  const thumbnail = product.images.find((image) => image.imageId === product.thumbnailId);
-
-  return thumbnail?.url ?? product.images[0]?.url ?? '';
-};
 
 export const toOrderTrackingDto = (
   order: Order,

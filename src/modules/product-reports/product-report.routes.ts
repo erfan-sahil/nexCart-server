@@ -43,3 +43,10 @@ productReportInboxRouter.patch(
   validate({ params: reportIdParamsSchema, body: updateProductReportStatusSchema }),
   productReportController.updateStatus,
 );
+
+productReportInboxRouter.delete(
+  '/:reportId',
+  ...requirePermissions(productReportPermissions.delete),
+  validate({ params: reportIdParamsSchema }),
+  productReportController.remove,
+);

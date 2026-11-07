@@ -5,6 +5,7 @@ import { imageStorage } from '../../infrastructure/storage/imageStorage';
 import { storeService } from './store.service';
 import { AppError } from '../../common/errors/AppError';
 import { asyncHandler } from '../../common/http/asyncHandler';
+import { publicFileUrl } from '../../common/http/publicFileUrl';
 import { sendPaginated, sendSuccess } from '../../common/http/sendResponse';
 import type {
   AdminStoreSuspensionInput,
@@ -86,16 +87,6 @@ const getMine = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, store, { message: 'Store fetched' });
 });
 
-const absoluteUploadUrl = (req: Request, url: string) => {
-  const host = req.get('host');
-
-  if (!host) {
-    throw AppError.internal('Could not build the file URL');
-  }
-
-  return `${req.protocol}://${host}${url}`;
-};
-
 const STORE_IMAGE_PROFILES = {
   logo: 'catalog',
   banner: 'hero',
@@ -128,7 +119,7 @@ const saveUploadedStoreImages = async (req: Request) => {
       saved.push({
         field,
         storageKey: stored.storageKey,
-        url: absoluteUploadUrl(req, stored.url),
+        url: publicFileUrl(req, stored.url),
       });
     }
   } catch (error) {

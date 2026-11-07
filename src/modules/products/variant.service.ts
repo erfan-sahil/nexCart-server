@@ -14,6 +14,7 @@ import {
 } from './variant-attributes';
 import type { AttributeRole, AttributeType } from '../attributes/types';
 import type { ImageProvider, ProductOfferDto, ProductViewer } from './types';
+import { isImageProvider } from './constants';
 import type { VariantDto, VariantStatus } from './variant.types';
 
 type DiscountType = 'percent' | 'amount';
@@ -319,7 +320,7 @@ const toAttributeRole = (role: string): AttributeRole => {
 };
 
 const toProvider = (provider: string): ImageProvider => {
-  if (provider === 'local') {
+  if (isImageProvider(provider)) {
     return provider;
   }
 

@@ -2,7 +2,11 @@ import { HERO_KEY, HERO_LIMITS } from './constants';
 import { HeroModel } from './hero.model';
 import { AppError } from '../../common/errors/AppError';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
-import { heroImageStorageKey, imageStorage } from '../../infrastructure/storage/imageStorage';
+import {
+  heroImageStorageKey,
+  imageStorage,
+  isManagedImageUrl,
+} from '../../infrastructure/storage/imageStorage';
 
 type HeroSlide = {
   eyebrow: string;
@@ -95,15 +99,11 @@ const imageFieldError = (index: number, message: string) =>
   AppError.validation(message, [{ path: `slides.${index}.image`, message }]);
 
 const assertImageAvailable = async (imageUrl: string, index: number) => {
-  let pathname = '';
-
-  try {
-    pathname = new URL(imageUrl).pathname;
-  } catch {
+  if (!URL.canParse(imageUrl)) {
     throw imageFieldError(index, 'Image must be a valid URL');
   }
 
-  if (!pathname.startsWith('/uploads/')) {
+  if (!isManagedImageUrl(imageUrl)) {
     return;
   }
 

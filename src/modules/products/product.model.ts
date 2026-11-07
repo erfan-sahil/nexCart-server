@@ -220,6 +220,10 @@ const productSchema = new Schema(
       maxlength: 10000,
       default: '',
     },
+    features: {
+      type: [{ type: String, trim: true, maxlength: 160 }],
+      default: [],
+    },
     images: {
       type: [productImageSchema],
       default: [],

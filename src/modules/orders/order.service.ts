@@ -187,8 +187,16 @@ export const orderService = {
       OrderModel.countDocuments(filter),
     ]);
 
+    const productIds = [
+      ...new Set(orders.flatMap((order) => order.items.map((item) => String(item.productId)))),
+    ];
+    const products = productIds.length
+      ? await ProductModel.find({ _id: { $in: productIds } }).select('slug images thumbnailId')
+      : [];
+    const productsById = new Map(products.map((product) => [String(product._id), product]));
+
     return {
-      items: orders.map((order) => toOrderDto(order)),
+      items: orders.map((order) => toOrderDto(order, undefined, null, null, productsById)),
       page: query.page,
       limit: query.limit,
       total,
@@ -210,15 +218,24 @@ export const orderService = {
 
     assertOrderOwner(order, actor.customerId);
 
-    const [vendorOrders, shipment, latestReturn] = await Promise.all([
+    const [vendorOrders, shipment, latestReturn, products] = await Promise.all([
       VendorOrderModel.find({ parentOrderId: order._id }).select('status'),
       ShipmentModel.findOne({ orderId: order._id }).select('status'),
       ReturnRequestModel.findOne({ parentOrderId: order._id })
         .sort({ createdAt: -1 })
         .select('status'),
+      ProductModel.find({
+        _id: { $in: [...new Set(order.items.map((item) => item.productId))] },
+      }).select('slug images thumbnailId'),
     ]);
 
-    return toOrderDto(order, vendorOrders, shipment?.status ?? null, latestReturn?.status ?? null);
+    return toOrderDto(
+      order,
+      vendorOrders,
+      shipment?.status ?? null,
+      latestReturn?.status ?? null,
+      new Map(products.map((product) => [String(product._id), product])),
+    );
   },
 
   async track(input: TrackOrderInput): Promise<OrderTrackingDto> {

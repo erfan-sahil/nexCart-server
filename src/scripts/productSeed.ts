@@ -1,11 +1,25 @@
 const photo = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1200&q=80`;
 
+const MAX_SEED_FEATURES = 30;
+const MAX_SEED_FEATURE_LENGTH = 160;
+
+export type ProductVariantSeed = {
+  sku: string;
+  price: number;
+  stock: number;
+  isDefault?: boolean;
+  discountPercent?: number;
+  options: Partial<Record<'color' | 'size' | 'storage', string>>;
+};
+
 export type ProductSeed = {
   name: string;
   slug: string;
   categorySlug: string;
   shortDescription: string;
   description: string;
+  /** One shopper-facing spec per line. Generated from copy when omitted. */
+  features?: string[];
   image: string;
   price: number;
   stock: number;
@@ -17,7 +31,97 @@ export type ProductSeed = {
   views7d: number;
   isFeatured?: boolean;
   discountPercent?: number;
+  /** Explicit sellable SKUs. When omitted, variants are generated from the category profile. */
+  variants?: ProductVariantSeed[];
 };
+
+function normalizeFeatureLine(line: string) {
+  return line
+    .trim()
+    .replace(/^[-•]\s*/, '')
+    .replace(/\.$/, '')
+    .slice(0, MAX_SEED_FEATURE_LENGTH);
+}
+
+function capitalizeFeature(line: string) {
+  const normalized = normalizeFeatureLine(line);
+
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function splitClauses(text: string) {
+  return text
+    .replace(/\s+and\s+/gi, ', ')
+    .split(',')
+    .map(normalizeFeatureLine)
+    .filter((line) => line.length > 1);
+}
+
+function splitDescription(text: string) {
+  const trimmed = text.trim();
+
+  if (!trimmed) {
+    return [];
+  }
+
+  const lines: string[] = [];
+
+  for (const sentence of trimmed.split(/(?<=[.!?])\s+/).filter(Boolean)) {
+    const clauses = splitClauses(sentence.replace(/\.$/, ''));
+
+    if (clauses.length > 1) {
+      lines.push(...clauses.map(capitalizeFeature));
+      continue;
+    }
+
+    lines.push(capitalizeFeature(sentence));
+  }
+
+  return lines;
+}
+
+export function featuresForProduct(item: ProductSeed) {
+  if (item.features?.length) {
+    return item.features
+      .map((line) => capitalizeFeature(line))
+      .filter(Boolean)
+      .slice(0, MAX_SEED_FEATURES);
+  }
+
+  const seen = new Set<string>();
+  const lines: string[] = [];
+
+  const push = (raw: string) => {
+    const line = capitalizeFeature(raw);
+
+    if (!line) {
+      return;
+    }
+
+    const key = line.toLowerCase();
+
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    lines.push(line);
+  };
+
+  for (const clause of splitClauses(item.shortDescription)) {
+    push(clause);
+  }
+
+  for (const line of splitDescription(item.description)) {
+    push(line);
+  }
+
+  return lines.slice(0, MAX_SEED_FEATURES);
+}
 
 export const productSeed: ProductSeed[] = [
   {
@@ -27,6 +131,14 @@ export const productSeed: ProductSeed[] = [
     shortDescription: '6.7-inch display, all-day battery, and a 50MP camera.',
     description:
       'A flagship Android phone with a bright OLED screen, fast charging, and a triple camera tuned for everyday photos.',
+    features: [
+      '6.7-inch OLED display',
+      'All-day battery life',
+      '50MP main camera',
+      'Triple camera tuned for everyday photos',
+      'Fast charging support',
+      'Flagship Android performance',
+    ],
     image: photo('photo-1511707171634-5f897ff02aa9'),
     price: 699,
     stock: 42,

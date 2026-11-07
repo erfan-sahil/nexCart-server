@@ -3,18 +3,9 @@ import { heroService } from './hero.service';
 import { imageStorage } from '../../infrastructure/storage/imageStorage';
 import { AppError } from '../../common/errors/AppError';
 import { asyncHandler } from '../../common/http/asyncHandler';
+import { publicFileUrl } from '../../common/http/publicFileUrl';
 import { sendSuccess } from '../../common/http/sendResponse';
 import type { HeroIndexParams, SetHeroActiveInput, UpsertHeroInput } from './hero.validator';
-
-const absoluteUploadUrl = (req: Request, url: string) => {
-  const host = req.get('host');
-
-  if (!host) {
-    throw AppError.internal('Could not build the file URL');
-  }
-
-  return `${req.protocol}://${host}${url}`;
-};
 
 const getHero = asyncHandler(async (_req: Request, res: Response) => {
   const hero = await heroService.get();
@@ -55,7 +46,7 @@ const uploadHeroImage = asyncHandler(async (req: Request, res: Response) => {
 
   sendSuccess(
     res,
-    { url: absoluteUploadUrl(req, stored.url) },
+    { url: publicFileUrl(req, stored.url) },
     { statusCode: 201, message: 'Hero image uploaded' },
   );
 });

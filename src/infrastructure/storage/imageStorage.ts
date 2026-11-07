@@ -1,6 +1,7 @@
 import { mkdir, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { env } from '../../config/env';
 import { uploadRoot } from '../../config/uploads';
 import {
   PRODUCT_IMAGE_EXTENSIONS,
@@ -11,6 +12,12 @@ import {
 import type { ImageProvider } from '../../modules/products/types';
 import { AppError } from '../../common/errors/AppError';
 import { optimizeImage, type ImageOptimizeProfile } from './imageOptimizer';
+import {
+  deleteFromCloudinary,
+  findCloudinaryAsset,
+  parseCloudinaryUrl,
+  uploadToCloudinary,
+} from './cloudinaryStorage';
 
 export type StoredImage = {
   id: string;
@@ -21,14 +28,31 @@ export type StoredImage = {
   size: number;
 };
 
-const LOCAL_KEY = /^products\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
-const CATEGORY_KEY = /^categories\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
-const CATEGORY_UPLOAD_PATH = /^\/uploads\/(categories\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
-const HERO_KEY = /^hero\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
-const HERO_UPLOAD_PATH = /^\/uploads\/(hero\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
-const STORE_KEY = /^stores\/img_[a-f0-9]{24}\.(jpg|png|webp|gif)$/;
-const STORE_UPLOAD_PATH = /^\/uploads\/(stores\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
-const PRODUCT_UPLOAD_PATH = /^\/uploads\/(products\/img_[a-f0-9]{24}\.(?:jpg|png|webp|gif))$/;
+type ImageFolder = 'products' | 'categories' | 'hero' | 'stores';
+
+type ImageLocation = {
+  provider: ImageProvider;
+  storageKey: string;
+  id: string;
+  mimeType: ProductImageMimeType;
+};
+
+const IMAGE_FOLDERS: readonly ImageFolder[] = ['products', 'categories', 'hero', 'stores'];
+
+const IMAGE_ID = 'img_[a-f0-9]{24}';
+const LOCAL_IMAGE_KEYS: Record<ImageFolder, RegExp> = {
+  products: new RegExp(`^products/${IMAGE_ID}\\.(?:jpg|png|webp|gif)$`),
+  categories: new RegExp(`^categories/${IMAGE_ID}\\.(?:jpg|png|webp|gif)$`),
+  hero: new RegExp(`^hero/${IMAGE_ID}\\.(?:jpg|png|webp|gif)$`),
+  stores: new RegExp(`^stores/${IMAGE_ID}\\.(?:jpg|png|webp|gif)$`),
+};
+const CLOUD_IMAGE_KEYS: Record<ImageFolder, RegExp> = {
+  products: new RegExp(`^${env.CLOUDINARY_FOLDER}/products/${IMAGE_ID}$`),
+  categories: new RegExp(`^${env.CLOUDINARY_FOLDER}/categories/${IMAGE_ID}$`),
+  hero: new RegExp(`^${env.CLOUDINARY_FOLDER}/hero/${IMAGE_ID}$`),
+  stores: new RegExp(`^${env.CLOUDINARY_FOLDER}/stores/${IMAGE_ID}$`),
+};
+
 const MIME_BY_EXTENSION: Record<string, ProductImageMimeType> = {
   '.jpg': 'image/jpeg',
   '.png': 'image/png',
@@ -46,6 +70,8 @@ const APPLICATION_EXTENSIONS = {
 } as const;
 
 type ApplicationMimeType = keyof typeof APPLICATION_EXTENSIONS;
+
+const useCloudinary = () => env.IMAGE_STORAGE_DRIVER === 'cloudinary';
 
 const createImageId = () => `img_${randomBytes(12).toString('hex')}`;
 
@@ -69,108 +95,184 @@ const hasSignature = (mimeType: ProductImageMimeType, buffer: Buffer) => {
 const isApplicationMimeType = (value: string): value is ApplicationMimeType =>
   value in APPLICATION_EXTENSIONS;
 
-const applicationPath = (storageKey: string) => {
-  if (!APPLICATION_KEY.test(storageKey)) {
-    throw AppError.internal('Stored file path is invalid');
-  }
-
-  const root = path.resolve(uploadRoot);
-  const target = path.resolve(root, storageKey);
-
-  if (!target.startsWith(`${root}${path.sep}`)) {
-    throw AppError.internal('Stored file path is invalid');
-  }
-
-  return target;
-};
-
-const storedPath = (storageKey: string, pattern: RegExp) => {
+const resolveInsideUploadRoot = (storageKey: string, pattern: RegExp, message: string) => {
   if (!pattern.test(storageKey)) {
-    throw AppError.internal('Stored image path is invalid');
+    throw AppError.internal(message);
   }
 
   const root = path.resolve(uploadRoot);
   const target = path.resolve(root, storageKey);
 
   if (!target.startsWith(`${root}${path.sep}`)) {
-    throw AppError.internal('Stored image path is invalid');
+    throw AppError.internal(message);
   }
 
   return target;
 };
 
-const categoryPath = (storageKey: string) => storedPath(storageKey, CATEGORY_KEY);
+const localImagePath = (storageKey: string, folder: ImageFolder) =>
+  resolveInsideUploadRoot(storageKey, LOCAL_IMAGE_KEYS[folder], 'Stored image path is invalid');
 
-const heroPath = (storageKey: string) => storedPath(storageKey, HERO_KEY);
+const applicationPath = (storageKey: string) =>
+  resolveInsideUploadRoot(storageKey, APPLICATION_KEY, 'Stored file path is invalid');
 
-const storePath = (storageKey: string) => storedPath(storageKey, STORE_KEY);
+const isMissingFileError = (error: unknown) =>
+  typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 
-export const categoryImageStorageKey = (imageUrl: string) => {
+const locateImage = (imageUrl: string, folder: ImageFolder): ImageLocation | null => {
+  const cloud = parseCloudinaryUrl(imageUrl);
+
+  if (cloud) {
+    const mimeType = MIME_BY_EXTENSION[`.${cloud.extension}`];
+
+    if (!mimeType || !CLOUD_IMAGE_KEYS[folder].test(cloud.publicId)) {
+      return null;
+    }
+
+    return {
+      provider: 'cloudinary',
+      storageKey: cloud.publicId,
+      id: path.posix.basename(cloud.publicId),
+      mimeType,
+    };
+  }
+
+  let pathname = '';
+
   try {
-    const match = CATEGORY_UPLOAD_PATH.exec(new URL(imageUrl).pathname);
-    return match?.[1] ?? null;
+    pathname = new URL(imageUrl).pathname;
+  } catch {
+    return null;
+  }
+
+  const storageKey = pathname.startsWith('/uploads/') ? pathname.slice('/uploads/'.length) : '';
+  const extension = path.extname(storageKey);
+  const mimeType = MIME_BY_EXTENSION[extension];
+
+  if (!mimeType || !LOCAL_IMAGE_KEYS[folder].test(storageKey)) {
+    return null;
+  }
+
+  return {
+    provider: 'local',
+    storageKey,
+    id: path.basename(storageKey, extension),
+    mimeType,
+  };
+};
+
+const inspectImage = async (
+  location: ImageLocation,
+  folder: ImageFolder,
+): Promise<{ url: string; size: number; mimeType: ProductImageMimeType } | null> => {
+  if (location.provider === 'cloudinary') {
+    const asset = await findCloudinaryAsset(location.storageKey);
+
+    if (!asset) {
+      return null;
+    }
+
+    return {
+      url: asset.url,
+      size: asset.bytes,
+      mimeType: MIME_BY_EXTENSION[`.${asset.format}`] ?? location.mimeType,
+    };
+  }
+
+  try {
+    const info = await stat(localImagePath(location.storageKey, folder));
+
+    return info.isFile()
+      ? { url: `/uploads/${location.storageKey}`, size: info.size, mimeType: location.mimeType }
+      : null;
   } catch {
     return null;
   }
 };
 
-export const heroImageStorageKey = (imageUrl: string) => {
+// Resolves an image URL returned by an upload endpoint back to the stored file, so records can only
+// reference images this API stored itself.
+const readUploadedImage = async (
+  imageUrl: string,
+  folder: ImageFolder,
+  missing: (again: boolean) => AppError,
+): Promise<StoredImage> => {
+  const location = locateImage(imageUrl, folder);
+
+  if (!location) {
+    throw missing(false);
+  }
+
+  const found = await inspectImage(location, folder);
+
+  if (!found || found.size < 1 || found.size > MAX_PRODUCT_IMAGE_BYTES) {
+    throw missing(true);
+  }
+
+  return {
+    id: location.id,
+    provider: location.provider,
+    storageKey: location.storageKey,
+    url: found.url,
+    mimeType: found.mimeType,
+    size: found.size,
+  };
+};
+
+const removeImage = async (storageKey: string, folder: ImageFolder) => {
+  if (CLOUD_IMAGE_KEYS[folder].test(storageKey)) {
+    await deleteFromCloudinary(storageKey);
+    return;
+  }
+
   try {
-    const match = HERO_UPLOAD_PATH.exec(new URL(imageUrl).pathname);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
+    await unlink(localImagePath(storageKey, folder));
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return;
+    }
+
+    throw error;
   }
 };
 
-export const storeImageStorageKey = (imageUrl: string) => {
+const writeLocalFile = async (target: string, buffer: Buffer) => {
   try {
-    const match = STORE_UPLOAD_PATH.exec(new URL(imageUrl).pathname);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
+    await writeFile(target, buffer);
+  } catch (error) {
+    await unlink(target).catch(() => undefined);
+    throw error;
   }
-};
-
-const productImageStorageKey = (imageUrl: string) => {
-  try {
-    const match = PRODUCT_UPLOAD_PATH.exec(new URL(imageUrl).pathname);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
-  }
-};
-
-const localPath = (storageKey: string) => {
-  if (!LOCAL_KEY.test(storageKey)) {
-    throw AppError.internal('Stored image path is invalid');
-  }
-
-  const root = path.resolve(uploadRoot);
-  const target = path.resolve(root, storageKey);
-
-  if (!target.startsWith(`${root}${path.sep}`)) {
-    throw AppError.internal('Stored image path is invalid');
-  }
-
-  return target;
 };
 
 export const ensureUploadDir = async () => {
-  await mkdir(path.join(uploadRoot, 'products'), { recursive: true });
-  await mkdir(path.join(uploadRoot, 'categories'), { recursive: true });
-  await mkdir(path.join(uploadRoot, 'hero'), { recursive: true });
-  await mkdir(path.join(uploadRoot, 'stores'), { recursive: true });
+  await Promise.all(
+    IMAGE_FOLDERS.map((folder) => mkdir(path.join(uploadRoot, folder), { recursive: true })),
+  );
 };
 
-const IMAGE_FOLDERS = {
-  products: localPath,
-  categories: categoryPath,
-  hero: heroPath,
-  stores: storePath,
-} as const;
+export const categoryImageStorageKey = (imageUrl: string) =>
+  locateImage(imageUrl, 'categories')?.storageKey ?? null;
 
-type ImageFolder = keyof typeof IMAGE_FOLDERS;
+export const heroImageStorageKey = (imageUrl: string) =>
+  locateImage(imageUrl, 'hero')?.storageKey ?? null;
+
+export const storeImageStorageKey = (imageUrl: string) =>
+  locateImage(imageUrl, 'stores')?.storageKey ?? null;
+
+// True for URLs served by this API's storage (local uploads or this Cloudinary cloud), which must be
+// verified before saving. Other http(s) URLs are external images and are stored as-is.
+export const isManagedImageUrl = (imageUrl: string) => {
+  if (parseCloudinaryUrl(imageUrl)) {
+    return true;
+  }
+
+  try {
+    return new URL(imageUrl).pathname.startsWith('/uploads/');
+  } catch {
+    return false;
+  }
+};
 
 const persistImage = async (
   file: { buffer: Buffer; mimeType: string },
@@ -193,18 +295,30 @@ const persistImage = async (
 
   const optimized = await optimizeImage(file.buffer, mimeType, profile);
   const id = createImageId();
-  const extension = PRODUCT_IMAGE_EXTENSIONS[optimized.mimeType];
-  const storageKey = `${folder}/${id}${extension}`;
-  const target = IMAGE_FOLDERS[folder](storageKey);
+
+  if (useCloudinary()) {
+    const asset = await uploadToCloudinary(optimized.buffer, { folder, id });
+
+    if (!CLOUD_IMAGE_KEYS[folder].test(asset.publicId)) {
+      await deleteFromCloudinary(asset.publicId).catch(() => undefined);
+      throw AppError.internal('Cloudinary stored the image under an unexpected id');
+    }
+
+    return {
+      id,
+      provider: 'cloudinary',
+      storageKey: asset.publicId,
+      url: asset.url,
+      mimeType: optimized.mimeType,
+      size: asset.bytes,
+    };
+  }
+
+  const storageKey = `${folder}/${id}${PRODUCT_IMAGE_EXTENSIONS[optimized.mimeType]}`;
+  const target = localImagePath(storageKey, folder);
 
   await ensureUploadDir();
-
-  try {
-    await writeFile(target, optimized.buffer);
-  } catch (error) {
-    await unlink(target).catch(() => undefined);
-    throw error;
-  }
+  await writeLocalFile(target, optimized.buffer);
 
   return {
     id,
@@ -216,58 +330,19 @@ const persistImage = async (
   };
 };
 
-// Local disk for now. The image id stays on the product if storage later moves
-// to a platform that issues its own id; that platform id belongs in storageKey.
 export const imageStorage = {
   async save(file: { buffer: Buffer; mimeType: string }): Promise<StoredImage> {
     return persistImage(file, 'products', 'catalog');
   },
 
   async readProductUpload(imageUrl: string): Promise<StoredImage> {
-    const storageKey = productImageStorageKey(imageUrl);
-
-    if (!storageKey) {
-      throw AppError.validation('Upload the image before saving the product');
-    }
-
-    const extension = path.extname(storageKey);
-    const mimeType = MIME_BY_EXTENSION[extension];
-    const id = path.basename(storageKey, extension);
-
-    if (!mimeType) {
-      throw AppError.validation('Upload the image before saving the product');
-    }
-
-    let size = 0;
-
-    try {
-      const info = await stat(localPath(storageKey));
-
-      if (!info.isFile()) {
-        throw AppError.validation('Upload the image again before saving the product');
-      }
-
-      size = info.size;
-    } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
-      }
-
-      throw AppError.validation('Upload the image again before saving the product');
-    }
-
-    if (size < 1 || size > MAX_PRODUCT_IMAGE_BYTES) {
-      throw AppError.validation('Upload the image again before saving the product');
-    }
-
-    return {
-      id,
-      provider: 'local',
-      storageKey,
-      url: `/uploads/${storageKey}`,
-      mimeType,
-      size,
-    };
+    return readUploadedImage(imageUrl, 'products', (again) =>
+      AppError.validation(
+        again
+          ? 'Upload the image again before saving the product'
+          : 'Upload the image before saving the product',
+      ),
+    );
   },
 
   async saveCategoryImage(file: { buffer: Buffer; mimeType: string }): Promise<StoredImage> {
@@ -275,60 +350,13 @@ export const imageStorage = {
   },
 
   async readHeroUpload(imageUrl: string): Promise<StoredImage> {
-    const storageKey = heroImageStorageKey(imageUrl);
+    return readUploadedImage(imageUrl, 'hero', (again) => {
+      const message = again
+        ? 'Upload the hero image again before saving'
+        : 'Upload the hero image before saving';
 
-    if (!storageKey) {
-      throw AppError.validation('Upload the hero image before saving', [
-        { path: 'image', message: 'Upload the hero image before saving' },
-      ]);
-    }
-
-    const extension = path.extname(storageKey);
-    const mimeType = MIME_BY_EXTENSION[extension];
-    const id = path.basename(storageKey, extension);
-
-    if (!mimeType) {
-      throw AppError.validation('Upload the hero image before saving', [
-        { path: 'image', message: 'Upload the hero image before saving' },
-      ]);
-    }
-
-    let size = 0;
-
-    try {
-      const info = await stat(heroPath(storageKey));
-
-      if (!info.isFile()) {
-        throw AppError.validation('Upload the hero image again before saving', [
-          { path: 'image', message: 'Upload the hero image again before saving' },
-        ]);
-      }
-
-      size = info.size;
-    } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
-      }
-
-      throw AppError.validation('Upload the hero image again before saving', [
-        { path: 'image', message: 'Upload the hero image again before saving' },
-      ]);
-    }
-
-    if (size < 1 || size > MAX_PRODUCT_IMAGE_BYTES) {
-      throw AppError.validation('Upload the hero image again before saving', [
-        { path: 'image', message: 'Upload the hero image again before saving' },
-      ]);
-    }
-
-    return {
-      id,
-      provider: 'local',
-      storageKey,
-      url: `/uploads/${storageKey}`,
-      mimeType,
-      size,
-    };
+      return AppError.validation(message, [{ path: 'image', message }]);
+    });
   },
 
   async saveHeroImage(file: { buffer: Buffer; mimeType: string }): Promise<StoredImage> {
@@ -336,57 +364,13 @@ export const imageStorage = {
   },
 
   async readStoreUpload(imageUrl: string, field: 'logo' | 'banner'): Promise<StoredImage> {
-    const storageKey = storeImageStorageKey(imageUrl);
-    const missing = (again = false) => {
+    return readUploadedImage(imageUrl, 'stores', (again) => {
       const message = again
         ? 'Upload the store image again before saving'
         : 'Upload the store image before saving';
 
       return AppError.validation(message, [{ path: field, message }]);
-    };
-
-    if (!storageKey) {
-      throw missing();
-    }
-
-    const extension = path.extname(storageKey);
-    const mimeType = MIME_BY_EXTENSION[extension];
-    const id = path.basename(storageKey, extension);
-
-    if (!mimeType) {
-      throw missing();
-    }
-
-    let size = 0;
-
-    try {
-      const info = await stat(storePath(storageKey));
-
-      if (!info.isFile()) {
-        throw missing(true);
-      }
-
-      size = info.size;
-    } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
-      }
-
-      throw missing(true);
-    }
-
-    if (size < 1 || size > MAX_PRODUCT_IMAGE_BYTES) {
-      throw missing(true);
-    }
-
-    return {
-      id,
-      provider: 'local',
-      storageKey,
-      url: `/uploads/${storageKey}`,
-      mimeType,
-      size,
-    };
+    });
   },
 
   async saveStoreImage(
@@ -422,17 +406,21 @@ export const imageStorage = {
         : await optimizeImage(file.buffer, mimeType, 'document');
 
     const id = `file_${randomBytes(12).toString('hex')}`;
-    const storageKey = `applications/${id}${APPLICATION_EXTENSIONS[optimized.mimeType]}`;
+    const extension = APPLICATION_EXTENSIONS[optimized.mimeType];
+
+    if (useCloudinary() && optimized.mimeType !== 'application/pdf') {
+      const asset = await uploadToCloudinary(optimized.buffer, { folder: 'applications', id });
+
+      return { url: asset.url, mimeType: optimized.mimeType };
+    }
+
+    // PDFs stay on local disk: Cloudinary accounts deny PDF delivery unless it is enabled under
+    // Settings > Security, and a stored-but-undeliverable document would break vendor reviews.
+    const storageKey = `applications/${id}${extension}`;
     const target = applicationPath(storageKey);
 
     await mkdir(path.join(uploadRoot, 'applications'), { recursive: true });
-
-    try {
-      await writeFile(target, optimized.buffer);
-    } catch (error) {
-      await unlink(target).catch(() => undefined);
-      throw error;
-    }
+    await writeLocalFile(target, optimized.buffer);
 
     return {
       url: `/uploads/${storageKey}`,
@@ -441,70 +429,18 @@ export const imageStorage = {
   },
 
   async removeHero(storageKey: string) {
-    try {
-      await unlink(heroPath(storageKey));
-    } catch (error) {
-      if (
-        typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        error.code === 'ENOENT'
-      ) {
-        return;
-      }
-
-      throw error;
-    }
+    await removeImage(storageKey, 'hero');
   },
 
   async removeStore(storageKey: string) {
-    try {
-      await unlink(storePath(storageKey));
-    } catch (error) {
-      if (
-        typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        error.code === 'ENOENT'
-      ) {
-        return;
-      }
-
-      throw error;
-    }
+    await removeImage(storageKey, 'stores');
   },
 
   async removeCategory(storageKey: string) {
-    try {
-      await unlink(categoryPath(storageKey));
-    } catch (error) {
-      if (
-        typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        error.code === 'ENOENT'
-      ) {
-        return;
-      }
-
-      throw error;
-    }
+    await removeImage(storageKey, 'categories');
   },
 
   async remove(storageKey: string) {
-    try {
-      await unlink(localPath(storageKey));
-    } catch (error) {
-      if (
-        typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        error.code === 'ENOENT'
-      ) {
-        return;
-      }
-
-      throw error;
-    }
+    await removeImage(storageKey, 'products');
   },
 };

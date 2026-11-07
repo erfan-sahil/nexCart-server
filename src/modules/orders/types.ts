@@ -31,6 +31,7 @@ export type OrderItemDto = {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  imageUrl: string;
 };
 
 export type OrderTotalsDto = {

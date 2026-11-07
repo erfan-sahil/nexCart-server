@@ -16,7 +16,11 @@ import type { VendorAddressDto } from '../vendor-applications/types';
 import { AppError } from '../../common/errors/AppError';
 import { duplicateKeyFields, isDuplicateKeyError } from '../../common/errors/mongoError';
 import { escapeRegex, slugify } from '../../common/utils/slugify';
-import { imageStorage, storeImageStorageKey } from '../../infrastructure/storage/imageStorage';
+import {
+  imageStorage,
+  isManagedImageUrl,
+  storeImageStorageKey,
+} from '../../infrastructure/storage/imageStorage';
 import type {
   ListAdminStoresQuery,
   ListStoresQuery,
@@ -263,17 +267,13 @@ const assertStoreImage = async (imageUrl: string, field: 'logo' | 'banner') => {
     return;
   }
 
-  let pathname = '';
-
-  try {
-    pathname = new URL(imageUrl).pathname;
-  } catch {
+  if (!URL.canParse(imageUrl)) {
     throw AppError.validation('Must be an http(s) URL', [
       { path: field, message: 'Must be an http(s) URL' },
     ]);
   }
 
-  if (!pathname.startsWith('/uploads/')) {
+  if (!isManagedImageUrl(imageUrl)) {
     return;
   }
 
