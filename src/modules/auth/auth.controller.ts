@@ -126,6 +126,7 @@ const me = asyncHandler((req: Request, res: Response) => {
 const googleAuth = asyncHandler((req: Request, res: Response) => {
   const authorizationUrl = googleAuthService.getAuthorizationUrl(req.query.callbackUrl);
   res.redirect(authorizationUrl);
+  return Promise.resolve();
 });
 
 const googleAuthCallback = asyncHandler(async (req: Request, res: Response) => {
