@@ -4,10 +4,13 @@ import { z } from 'zod';
 const DEV_JWT_ACCESS_SECRET = 'dev-only-access-secret-change-me!!';
 const DEV_JWT_REFRESH_SECRET = 'dev-only-refresh-secret-change-me!';
 
-const booleanFromString = z
-  .enum(['true', 'false', '1', '0'])
-  .default('false')
-  .transform((value) => value === 'true' || value === '1');
+const booleanWithDefault = (defaultValue: 'true' | 'false') =>
+  z
+    .enum(['true', 'false', '1', '0'])
+    .default(defaultValue)
+    .transform((value) => value === 'true' || value === '1');
+
+const booleanFromString = booleanWithDefault('false');
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -37,6 +40,10 @@ const envSchema = z.object({
     .min(1)
     .default('mongodb://127.0.0.1:27017/nexcart?replicaSet=rs0&directConnection=true'),
   REDIS_URL: z.string().min(1).default('redis://127.0.0.1:6379'),
+  REDIS_ENABLED: booleanWithDefault('true'),
+  REDIS_REQUIRED: booleanFromString,
+  REDIS_KEY_PREFIX: z.string().trim().optional(),
+  CACHE_DEFAULT_TTL_SECONDS: z.coerce.number().int().positive().default(60),
   JWT_ACCESS_SECRET: z.string().min(32).default(DEV_JWT_ACCESS_SECRET),
   JWT_REFRESH_SECRET: z.string().min(32).default(DEV_JWT_REFRESH_SECRET),
   JWT_ACCESS_TTL_SECONDS: z.coerce
@@ -112,6 +119,10 @@ if (
   throw new Error(
     'Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET when IMAGE_STORAGE_DRIVER=cloudinary',
   );
+}
+
+if (env.REDIS_REQUIRED && !env.REDIS_ENABLED) {
+  throw new Error('Set REDIS_ENABLED=true when REDIS_REQUIRED=true');
 }
 
 if (isProduction && env.SSLCOMMERZ_MOCK) {

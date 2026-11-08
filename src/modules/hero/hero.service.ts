@@ -1,6 +1,8 @@
 import { HERO_KEY, HERO_LIMITS } from './constants';
 import { HeroModel } from './hero.model';
 import { AppError } from '../../common/errors/AppError';
+import { CACHE_KEYS, CACHE_TTL } from '../../infrastructure/cache/cache-keys';
+import { cache } from '../../infrastructure/cache/cache.service';
 import { isDuplicateKeyError } from '../../common/errors/mongoError';
 import {
   heroImageStorageKey,
@@ -182,10 +184,12 @@ const assertActiveLimit = (slides: readonly HeroSlide[]) => {
 };
 
 export const heroService = {
-  async get(): Promise<HeroSection> {
-    const hero: unknown = await HeroModel.findOne({ key: HERO_KEY }).lean();
+  get(): Promise<HeroSection> {
+    return cache.getOrSet(CACHE_KEYS.hero, CACHE_TTL.hero, async () => {
+      const hero: unknown = await HeroModel.findOne({ key: HERO_KEY }).lean();
 
-    return { slides: slidesFromDocument(hero) };
+      return { slides: slidesFromDocument(hero) };
+    });
   },
 
   async upsert(input: HeroSection): Promise<HeroSection> {
@@ -207,6 +211,8 @@ export const heroService = {
     if (!hero) {
       throw AppError.internal('Could not save the hero section');
     }
+
+    await cache.invalidate(CACHE_KEYS.hero);
 
     const nextImages = new Set(slides.map((slide) => slide.image));
 
@@ -243,6 +249,8 @@ export const heroService = {
     if (!hero) {
       throw AppError.internal('Could not update the hero');
     }
+
+    await cache.invalidate(CACHE_KEYS.hero);
 
     return { slides: next };
   },

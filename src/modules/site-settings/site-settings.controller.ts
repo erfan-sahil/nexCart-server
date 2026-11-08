@@ -5,7 +5,7 @@ import { siteSettingsService } from './site-settings.service';
 import type { UpdateSiteSettingsInput } from './site-settings.validator';
 
 const getSettings = asyncHandler(async (_req: Request, res: Response) => {
-  const settings = await siteSettingsService.get();
+  const settings = await siteSettingsService.getPublic();
 
   sendSuccess(res, settings, { message: 'Site settings fetched' });
 });
