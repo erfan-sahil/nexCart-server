@@ -224,6 +224,10 @@ export const authService = {
       user.lockUntil = null;
     }
 
+    if (!user.passwordHash) {
+      throw AppError.unauthorized('This account uses Google sign-in. Please continue with Google.');
+    }
+
     const passwordMatches = await verifyPassword(input.password, user.passwordHash);
 
     if (!passwordMatches) {
@@ -246,6 +250,10 @@ export const authService = {
     user.lastLoginAt = new Date();
     await user.save();
 
+    return createSession(user, meta);
+  },
+
+  createSessionForUser(user: PublicUser, meta: ClientMeta) {
     return createSession(user, meta);
   },
 
