@@ -1,5 +1,5 @@
 import { Schema, model, type InferSchemaType, type Types } from 'mongoose';
-import { USER_ROLES, USER_STATUSES } from '../auth/constants';
+import { AUTH_PROVIDERS, USER_ROLES, USER_STATUSES } from '../auth/constants';
 
 const userSchema = new Schema(
   {
@@ -13,8 +13,21 @@ const userSchema = new Schema(
     },
     passwordHash: {
       type: String,
-      required: true,
+      required: false,
+      default: null,
       select: false,
+    },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      default: null,
+      select: false,
+    },
+    authProvider: {
+      type: String,
+      enum: AUTH_PROVIDERS,
+      default: 'local',
     },
     firstName: {
       type: String,

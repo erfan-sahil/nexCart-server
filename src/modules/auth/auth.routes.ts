@@ -18,6 +18,10 @@ authRouter.post(
 
 authRouter.post('/login', authLimiter, validate({ body: loginSchema }), authController.login);
 
+authRouter.get('/google', authLimiter, authController.googleAuth);
+
+authRouter.get('/google/callback', authLimiter, authController.googleAuthCallback);
+
 authRouter.post('/refresh', authLimiter, authController.refresh);
 
 authRouter.post('/logout', authController.logout);

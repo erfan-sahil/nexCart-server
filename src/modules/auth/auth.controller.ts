@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { authService } from './auth.service';
+import { googleAuthService } from './google-auth.service';
 import type { AuthSessionDto, ClientMeta } from './types';
 import {
   clearRefreshCookie,
@@ -9,6 +10,7 @@ import {
 import { asyncHandler } from '../../common/http/asyncHandler';
 import { AppError } from '../../common/errors/AppError';
 import { sendCreated, sendSuccess } from '../../common/http/sendResponse';
+import { logger } from '../../common/utils/logger';
 import type { LoginInput, RegisterInput } from './auth.validator';
 
 const routeParam = (value: string | string[] | undefined) =>
@@ -121,6 +123,49 @@ const me = asyncHandler((req: Request, res: Response) => {
   return Promise.resolve();
 });
 
+const googleAuth = asyncHandler((req: Request, res: Response) => {
+  const authorizationUrl = googleAuthService.getAuthorizationUrl(req.query.callbackUrl);
+  res.redirect(authorizationUrl);
+  return Promise.resolve();
+});
+
+const googleAuthCallback = asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { session, callbackUrl } = await googleAuthService.handleCallback(
+      {
+        code: req.query.code,
+        state: req.query.state,
+        error: req.query.error,
+      },
+      clientMeta(req),
+    );
+
+    setRefreshCookie(res, session.refreshToken);
+    res.redirect(
+      googleAuthService.buildSuccessRedirect(callbackUrl, {
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        sessionId: session.sessionId,
+        expiresIn: session.expiresIn,
+      }),
+    );
+  } catch (error) {
+    const appError = error instanceof AppError ? error : null;
+
+    logger.error('Google OAuth callback failed', {
+      cause: error instanceof Error ? error.message : 'Unknown error',
+      statusCode: appError?.statusCode,
+    });
+
+    const message =
+      appError?.isOperational && appError.message
+        ? appError.message
+        : 'Google sign-in failed. Please try again.';
+
+    res.redirect(googleAuthService.buildErrorRedirect(message));
+  }
+});
+
 export const authController = {
   register,
   login,
@@ -130,4 +175,6 @@ export const authController = {
   listSessions,
   revokeSession,
   me,
+  googleAuth,
+  googleAuthCallback,
 };

@@ -75,6 +75,9 @@ const envSchema = z.object({
   ORDER_CURRENCY: z.string().trim().length(3).default('BDT'),
   PUBLIC_API_URL: z.string().url().default('http://localhost:4000'),
   CLIENT_APP_URL: z.string().url().default('http://localhost:3000'),
+  GOOGLE_CLIENT_ID: z.string().trim().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().trim().default(''),
+  GOOGLE_CALLBACK_URL: z.string().url().default('http://localhost:4000/api/auth/google/callback'),
   SSLCOMMERZ_MOCK: z
     .enum(['true', 'false', '1', '0'])
     .default('true')
