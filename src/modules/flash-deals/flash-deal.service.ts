@@ -22,6 +22,8 @@ import type {
   FlashDealSettingsDto,
 } from './types';
 import { AppError } from '../../common/errors/AppError';
+import { CACHE_KEYS, CACHE_TTL } from '../../infrastructure/cache/cache-keys';
+import { cache } from '../../infrastructure/cache/cache.service';
 import { ProductModel } from '../products/product.model';
 import { ProductVariantModel } from '../products/product-variant.model';
 import { StoreModel, isStoreListed } from '../stores/store.model';
@@ -390,14 +392,25 @@ export const flashDealService = {
     return { sectionTitle: meta.sectionTitle };
   },
 
-  async getPublicMeta(now = new Date()): Promise<FlashDealPublicMetaDto> {
-    await ensureMigrated();
-    const soonest = await findActiveCampaign(now);
+  async getPublicMeta(now?: Date): Promise<FlashDealPublicMetaDto> {
+    const load = async (at: Date): Promise<FlashDealPublicMetaDto> => {
+      await ensureMigrated();
+      const soonest = await findActiveCampaign(at);
 
-    return {
-      sectionTitle: soonest?.name ?? DEFAULT_FLASH_DEAL_SECTION_TITLE,
-      endsAt: soonest?.endsAt ? soonest.endsAt.toISOString() : null,
+      return {
+        sectionTitle: soonest?.name ?? DEFAULT_FLASH_DEAL_SECTION_TITLE,
+        endsAt: soonest?.endsAt ? soonest.endsAt.toISOString() : null,
+      };
     };
+
+    // An explicit `now` is a point-in-time query, so it bypasses the shared cache.
+    if (now) {
+      return load(now);
+    }
+
+    return cache.getOrSet(CACHE_KEYS.flashDealMeta, CACHE_TTL.flashDealMeta, () =>
+      load(new Date()),
+    );
   },
 
   async create(input: CreateFlashDealCampaignInput) {
@@ -411,6 +424,8 @@ export const flashDealService = {
       endsAt: input.endsAt,
       isEnabled: true,
     });
+
+    await cache.invalidate(CACHE_KEYS.flashDealMeta);
 
     return campaignDto(created, 0);
   },
@@ -430,6 +445,7 @@ export const flashDealService = {
 
     campaign.isEnabled = input.isEnabled;
     await campaign.save();
+    await cache.invalidate(CACHE_KEYS.flashDealMeta);
 
     const counts = await itemCountsByCampaign([campaign._id]);
     return campaignDto(campaign, counts.get(String(campaign._id)) ?? 0);
@@ -456,6 +472,7 @@ export const flashDealService = {
     campaign.startsAt = startsAt;
     campaign.endsAt = endsAt;
     await campaign.save();
+    await cache.invalidate(CACHE_KEYS.flashDealMeta);
 
     const counts = await itemCountsByCampaign([campaign._id]);
     return campaignDto(campaign, counts.get(String(campaign._id)) ?? 0);
@@ -466,6 +483,7 @@ export const flashDealService = {
     const campaign = await loadCampaign(id);
     campaign.endsAt = new Date();
     await campaign.save();
+    await cache.invalidate(CACHE_KEYS.flashDealMeta);
 
     const counts = await itemCountsByCampaign([campaign._id]);
     return campaignDto(campaign, counts.get(String(campaign._id)) ?? 0);

@@ -1,5 +1,7 @@
 import { env } from '../../config/env';
 import { SiteSettingsModel } from './site-settings.model';
+import { CACHE_KEYS, CACHE_TTL } from '../../infrastructure/cache/cache-keys';
+import { cache } from '../../infrastructure/cache/cache.service';
 import { ORDER_CURRENCY } from '../orders/constants';
 import { SITE_SETTINGS_KEY } from './constants';
 import type { SiteSettingsDto } from './types';
@@ -53,6 +55,11 @@ export const siteSettingsService = {
     return toDto(record);
   },
 
+  /** Cached read for the public endpoint. Checkout pricing must keep using `get()`. */
+  getPublic(): Promise<SiteSettingsDto> {
+    return cache.getOrSet(CACHE_KEYS.siteSettings, CACHE_TTL.siteSettings, () => this.get());
+  },
+
   async update(input: UpdateSiteSettingsInput): Promise<SiteSettingsDto> {
     const record = await SiteSettingsModel.findOneAndUpdate(
       { key: SITE_SETTINGS_KEY },
@@ -66,6 +73,8 @@ export const siteSettingsService = {
       },
       { upsert: true, new: true, runValidators: true },
     );
+
+    await cache.invalidate(CACHE_KEYS.siteSettings);
 
     return toDto(record);
   },

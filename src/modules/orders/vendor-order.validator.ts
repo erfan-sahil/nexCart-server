@@ -110,6 +110,7 @@ export const updateAdminOrderStatusSchema = z
       'customer_rejected',
       'returning_to_warehouse',
       'returned_to_warehouse',
+      'update_courier_details',
     ]),
     carrier: z.string().trim().min(1).max(80).optional(),
     trackingNumber: z.string().trim().min(1).max(80).optional(),
@@ -142,6 +143,17 @@ export const updateAdminOrderStatusSchema = z
         code: z.ZodIssueCode.custom,
         path: ['lines'],
         message: 'lines are required for customer rejection',
+      });
+    }
+
+    if (
+      value.status === 'update_courier_details' &&
+      (!value.carrier?.trim() || !value.trackingNumber?.trim())
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['carrier'],
+        message: 'carrier and trackingNumber are required',
       });
     }
   });

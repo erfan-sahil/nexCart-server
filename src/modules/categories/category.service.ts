@@ -18,6 +18,8 @@ import type {
   ListCategoriesQuery,
   UpdateCategoryInput,
 } from './category.validator';
+import { CACHE_KEYS, CACHE_TTL } from '../../infrastructure/cache/cache-keys';
+import { cache } from '../../infrastructure/cache/cache.service';
 import { categoryImageStorageKey, imageStorage } from '../../infrastructure/storage/imageStorage';
 
 type CategoryRecord = {
@@ -269,6 +271,8 @@ const findCategory = async (id: string) => {
   return category;
 };
 
+const invalidateCategoryCache = () => cache.invalidateByPrefix(CACHE_KEYS.categoriesPrefix);
+
 export const categoryService = {
   async create(input: CreateCategoryInput) {
     const parent = await resolveParent(input.parentId, input.level);
@@ -286,6 +290,8 @@ export const categoryService = {
         isActive: input.isActive ?? true,
         sortOrder: input.sortOrder ?? 0,
       });
+
+      await invalidateCategoryCache();
 
       return toDetail(created);
     } catch (error) {
@@ -330,16 +336,18 @@ export const categoryService = {
     };
   },
 
-  async tree(isActive?: boolean) {
-    const filter: FilterQuery<Category> = {};
+  tree(isActive?: boolean) {
+    return cache.getOrSet(CACHE_KEYS.categoryTree(isActive), CACHE_TTL.categories, async () => {
+      const filter: FilterQuery<Category> = {};
 
-    if (isActive !== undefined) {
-      filter.isActive = isActive;
-    }
+      if (isActive !== undefined) {
+        filter.isActive = isActive;
+      }
 
-    const items = await CategoryModel.find(filter).sort({ sortOrder: 1, name: 1 }).lean();
+      const items = await CategoryModel.find(filter).sort({ sortOrder: 1, name: 1 }).lean();
 
-    return attachProductCounts(buildTree(items.map((item) => toDto(item))));
+      return attachProductCounts(buildTree(items.map((item) => toDto(item))));
+    });
   },
 
   async getById(id: string) {
@@ -347,14 +355,17 @@ export const categoryService = {
     return toDetail(category);
   },
 
-  async getBySlug(slug: string) {
-    const category = await CategoryModel.findOne({ slug });
+  getBySlug(slug: string) {
+    // Misses throw, so unknown slugs are never cached.
+    return cache.getOrSet(CACHE_KEYS.categoryBySlug(slug), CACHE_TTL.categories, async () => {
+      const category = await CategoryModel.findOne({ slug });
 
-    if (!category) {
-      throw AppError.notFound('Category not found');
-    }
+      if (!category) {
+        throw AppError.notFound('Category not found');
+      }
 
-    return toDetail(category);
+      return toDetail(category);
+    });
   },
 
   async update(id: string, input: UpdateCategoryInput) {
@@ -432,6 +443,8 @@ export const categoryService = {
       await releaseCategoryImage(previousImage);
     }
 
+    await invalidateCategoryCache();
+
     return toDetail(category);
   },
 
@@ -448,33 +461,36 @@ export const categoryService = {
     await category.deleteOne();
     await CategoryAttributeModel.deleteMany({ categoryId: category._id });
     await releaseCategoryImage(image);
+    await invalidateCategoryCache();
 
     return { id: String(category._id) };
   },
 
-  async listFeatured(): Promise<FeaturedCategoryDto[]> {
-    const [tree, featured] = await Promise.all([
-      this.tree(true),
-      CategoryModel.find({
-        level: CATEGORY_LEVEL.ROOT,
-        isActive: true,
-        isFeatured: true,
-      })
-        .sort({ featuredOrder: 1, name: 1 })
-        .lean(),
-    ]);
+  listFeatured(): Promise<FeaturedCategoryDto[]> {
+    return cache.getOrSet(CACHE_KEYS.categoryFeatured, CACHE_TTL.categories, async () => {
+      const [tree, featured] = await Promise.all([
+        this.tree(true),
+        CategoryModel.find({
+          level: CATEGORY_LEVEL.ROOT,
+          isActive: true,
+          isFeatured: true,
+        })
+          .sort({ featuredOrder: 1, name: 1 })
+          .lean(),
+      ]);
 
-    const counts = new Map<string, number>();
-    const collectCounts = (node: CategoryTreeNode) => {
-      counts.set(node.id, node.productCount);
-      node.children.forEach(collectCounts);
-    };
-    tree.forEach(collectCounts);
+      const counts = new Map<string, number>();
+      const collectCounts = (node: CategoryTreeNode) => {
+        counts.set(node.id, node.productCount);
+        node.children.forEach(collectCounts);
+      };
+      tree.forEach(collectCounts);
 
-    return featured.map((item) => ({
-      ...toDto(item),
-      productCount: counts.get(String(item._id)) ?? 0,
-    }));
+      return featured.map((item) => ({
+        ...toDto(item),
+        productCount: counts.get(String(item._id)) ?? 0,
+      }));
+    });
   },
 
   async setFeatured(id: string, isFeatured: boolean) {
@@ -491,6 +507,8 @@ export const categoryService = {
     }
 
     await category.save();
+    await invalidateCategoryCache();
+
     return toDetail(category);
   },
 
@@ -521,6 +539,8 @@ export const categoryService = {
         CategoryModel.updateOne({ _id: categoryId }, { $set: { featuredOrder: index } }),
       ),
     );
+
+    await invalidateCategoryCache();
 
     return this.listFeatured();
   },

@@ -17,6 +17,8 @@ import { variantService } from '../products/variant.service';
 import type { ListCatalogQuery } from './catalog.validator';
 import { flashDealService } from '../flash-deals/flash-deal.service';
 import { sponsoredPlacementService } from '../sponsored-placements/sponsored-placement.service';
+import { CACHE_KEYS, CACHE_TTL } from '../../infrastructure/cache/cache-keys';
+import { cache } from '../../infrastructure/cache/cache.service';
 
 type CatalogSort = NonNullable<ListCatalogQuery['sort']>;
 
@@ -312,44 +314,47 @@ const scoreRelated = (product: Product, tags: Set<string>, optionIds: Set<string
 };
 
 export const catalogService = {
-  async home(): Promise<CatalogHomeDto> {
-    await ensureCatalogData();
+  home(): Promise<CatalogHomeDto> {
+    // Short TTL instead of write-time invalidation: products, stock and deals change from many modules.
+    return cache.getOrSet(CACHE_KEYS.catalogHome, CACHE_TTL.catalogHome, async () => {
+      await ensureCatalogData();
 
-    const exclusions = await sponsoredPlacementService.sectionExclusions();
+      const exclusions = await sponsoredPlacementService.sectionExclusions();
 
-    const [flashMeta, flashDeals, topSelling, popularStores, trending, newArrivals] =
-      await Promise.all([
-        flashDealService.getPublicMeta(),
-        listFlashDealsCollection({ page: 1, limit: HOME_SECTION_LIMITS.flashDeals }),
-        listCollectionExcluding(
-          'bestsellers',
-          { page: 1, limit: HOME_SECTION_LIMITS.topSelling },
-          exclusions.get('top-selling'),
-        ),
-        storeService.listPublic({
-          page: 1,
-          limit: HOME_SECTION_LIMITS.popularStores,
-          sort: 'popular',
-        }),
-        listCollectionExcluding('trending', { page: 1, limit: HOME_SECTION_LIMITS.trending }),
-        listCollectionExcluding(
-          'new-arrivals',
-          { page: 1, limit: HOME_SECTION_LIMITS.newArrivals },
-          exclusions.get('new-arrivals'),
-        ),
-      ]);
+      const [flashMeta, flashDeals, topSelling, popularStores, trending, newArrivals] =
+        await Promise.all([
+          flashDealService.getPublicMeta(),
+          listFlashDealsCollection({ page: 1, limit: HOME_SECTION_LIMITS.flashDeals }),
+          listCollectionExcluding(
+            'bestsellers',
+            { page: 1, limit: HOME_SECTION_LIMITS.topSelling },
+            exclusions.get('top-selling'),
+          ),
+          storeService.listPublic({
+            page: 1,
+            limit: HOME_SECTION_LIMITS.popularStores,
+            sort: 'popular',
+          }),
+          listCollectionExcluding('trending', { page: 1, limit: HOME_SECTION_LIMITS.trending }),
+          listCollectionExcluding(
+            'new-arrivals',
+            { page: 1, limit: HOME_SECTION_LIMITS.newArrivals },
+            exclusions.get('new-arrivals'),
+          ),
+        ]);
 
-    return {
-      flashDeals: {
-        sectionTitle: flashMeta.sectionTitle,
-        endsAt: flashDeals.endsAt ?? flashMeta.endsAt,
-        items: flashDeals.items,
-      },
-      topSelling: { items: topSelling.items },
-      popularStores: { items: popularStores.items },
-      trending: { items: trending.items },
-      newArrivals: { items: newArrivals.items },
-    };
+      return {
+        flashDeals: {
+          sectionTitle: flashMeta.sectionTitle,
+          endsAt: flashDeals.endsAt ?? flashMeta.endsAt,
+          items: flashDeals.items,
+        },
+        topSelling: { items: topSelling.items },
+        popularStores: { items: popularStores.items },
+        trending: { items: trending.items },
+        newArrivals: { items: newArrivals.items },
+      };
+    });
   },
 
   async list(collection: CatalogCollectionParam, query: ListCatalogQuery) {

@@ -27,7 +27,8 @@ export const adminOrderStatusService = {
         | 'delivery_failed'
         | 'customer_rejected'
         | 'returning_to_warehouse'
-        | 'returned_to_warehouse';
+        | 'returned_to_warehouse'
+        | 'update_courier_details';
       carrier?: string;
       trackingNumber?: string;
       reason?: string;
@@ -81,6 +82,17 @@ export const adminOrderStatusService = {
       );
 
       return result;
+    }
+
+    if (input.status === 'update_courier_details') {
+      if (!input.carrier?.trim() || !input.trackingNumber?.trim()) {
+        throw AppError.validation('carrier and trackingNumber are required');
+      }
+
+      return fulfillmentService.updateCourierDetails(adminUserId, orderId, {
+        carrier: input.carrier.trim(),
+        trackingNumber: input.trackingNumber.trim(),
+      });
     }
 
     if (input.status === 'out_for_delivery') {

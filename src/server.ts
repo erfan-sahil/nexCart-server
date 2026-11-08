@@ -1,6 +1,7 @@
 import { createApp } from './app';
 import { appState } from './config/appState';
 import { connectDatabase, disconnectDatabase } from './config/database';
+import { connectRedis, disconnectRedis } from './config/redis';
 import { migrateFulfillmentRecords } from './modules/fulfillment/fulfillment.migrate';
 import { migrateShipmentStatuses } from './modules/fulfillment/shipment.migrate';
 import { migrateWalletSnapshots } from './modules/wallet/wallet.migrate';
@@ -13,6 +14,7 @@ const host = '0.0.0.0';
 
 const start = async () => {
   await connectDatabase();
+  await connectRedis();
   await migrateFulfillmentRecords();
   await migrateShipmentStatuses();
   await migrateWalletSnapshots();
@@ -65,12 +67,12 @@ const start = async () => {
         process.exit(1);
       }
 
-      void disconnectDatabase()
+      void Promise.all([disconnectDatabase(), disconnectRedis()])
         .then(() => {
           process.exit(0);
         })
         .catch((disconnectError: unknown) => {
-          logger.error('Error disconnecting MongoDB', { err: disconnectError });
+          logger.error('Error disconnecting data stores', { err: disconnectError });
           process.exit(1);
         });
     });
