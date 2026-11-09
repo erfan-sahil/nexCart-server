@@ -3,12 +3,21 @@ const photo = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit
 const MAX_SEED_FEATURES = 30;
 const MAX_SEED_FEATURE_LENGTH = 160;
 
+export type ProductImageSeed = {
+  /** Stable per-product key; variants reference images by this key. */
+  key: string;
+  url: string;
+  alt?: string;
+};
+
 export type ProductVariantSeed = {
   sku: string;
   price: number;
   stock: number;
   isDefault?: boolean;
   discountPercent?: number;
+  /** Key of a gallery image. Defaults to the product thumbnail. */
+  imageKey?: string;
   options: Partial<Record<'color' | 'size' | 'storage', string>>;
 };
 
@@ -21,6 +30,8 @@ export type ProductSeed = {
   /** One shopper-facing spec per line. Generated from copy when omitted. */
   features?: string[];
   image: string;
+  /** Full gallery in display order; the first image is the thumbnail. Replaces `image` when set. */
+  gallery?: ProductImageSeed[];
   price: number;
   stock: number;
   tags: string[];
@@ -387,6 +398,81 @@ export const productSeed: ProductSeed[] = [
     views7d: 1100,
     isFeatured: true,
     discountPercent: 25,
+  },
+  {
+    name: 'Stride Flex Runner',
+    slug: 'stride-flex-runner',
+    categorySlug: 'shoes',
+    shortDescription: 'Lightweight knit runner with responsive foam, in four colorways.',
+    description:
+      'A breathable knit upper, a responsive foam midsole, and a rubber outsole built for daily miles.',
+    features: [
+      'Breathable engineered knit upper',
+      'Responsive foam midsole for all-day cushioning',
+      'Durable rubber outsole with multi-surface grip',
+      'Padded collar and heel tab for an easy fit',
+      'Removable cushioned insole',
+      'Available in Black, White, Red, and Green',
+    ],
+    image: photo('photo-1491553895911-0055eca6402d'),
+    gallery: [
+      {
+        key: 'black-1',
+        url: photo('photo-1491553895911-0055eca6402d'),
+        alt: 'Stride Flex Runner in Black',
+      },
+      {
+        key: 'black-2',
+        url: photo('photo-1605348532760-6753d2c43329'),
+        alt: 'Stride Flex Runner in Black, side profile',
+      },
+      {
+        key: 'white-1',
+        url: photo('photo-1608231387042-66d1773070a5'),
+        alt: 'Stride Flex Runner in White',
+      },
+      {
+        key: 'red-1',
+        url: photo('photo-1607522370275-f14206abe5d3'),
+        alt: 'Stride Flex Runner in Red',
+      },
+      {
+        key: 'green-1',
+        url: photo('photo-1606107557195-0e29a4b5b4aa'),
+        alt: 'Stride Flex Runner in Green',
+      },
+    ],
+    price: 140,
+    stock: 0,
+    tags: ['shoes', 'sneakers', 'running'],
+    ratingAverage: 4.8,
+    ratingCount: 214,
+    unitsSold30d: 180,
+    unitsSold7d: 46,
+    views7d: 960,
+    isFeatured: true,
+    variants: [
+      { color: 'black', size: 's', stock: 14 },
+      { color: 'black', size: 'm', stock: 22, isDefault: true, discountPercent: 15 },
+      { color: 'black', size: 'l', stock: 18 },
+      { color: 'white', size: 's', stock: 10 },
+      { color: 'white', size: 'm', stock: 16 },
+      { color: 'white', size: 'l', stock: 4 },
+      { color: 'red', size: 's', stock: 8 },
+      { color: 'red', size: 'm', stock: 12, price: 150 },
+      { color: 'red', size: 'l', stock: 0, price: 150 },
+      { color: 'green', size: 's', stock: 6 },
+      { color: 'green', size: 'm', stock: 9 },
+      { color: 'green', size: 'l', stock: 3 },
+    ].map(({ color, size, stock, price, isDefault, discountPercent }) => ({
+      sku: `NX-STRIDE-${color}-${size}`.toUpperCase(),
+      price: price ?? 140,
+      stock,
+      isDefault,
+      discountPercent,
+      imageKey: `${color}-1`,
+      options: { color, size },
+    })),
   },
   {
     name: 'City Tote',

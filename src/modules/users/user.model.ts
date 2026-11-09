@@ -17,11 +17,10 @@ const userSchema = new Schema(
       default: null,
       select: false,
     },
+    // Left unset for local accounts: a unique index would treat every stored `null` as a duplicate.
     googleId: {
       type: String,
-      unique: true,
-      sparse: true,
-      default: null,
+      default: undefined,
       select: false,
     },
     authProvider: {
@@ -101,6 +100,13 @@ userSchema.index(
   {
     unique: true,
     partialFilterExpression: { phone: { $type: 'string' } },
+  },
+);
+userSchema.index(
+  { googleId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { googleId: { $type: 'string' } },
   },
 );
 userSchema.index({ role: 1, status: 1 });

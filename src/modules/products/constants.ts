@@ -20,7 +20,7 @@ export const PRODUCT_IMAGE_EXTENSIONS = {
 
 export const PRODUCT_IMAGE_ID = /^img_[a-f0-9]{24}$/;
 
-export const MAX_PRODUCT_IMAGES = 8;
+export const MAX_PRODUCT_IMAGES = 5;
 
 export const MAX_PRODUCT_FEATURES = 30;
 
