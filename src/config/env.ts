@@ -22,7 +22,7 @@ const envSchema = z.object({
     .transform((value) =>
       value
         .split(',')
-        .map((origin) => origin.trim())
+        .map((origin) => origin.trim().replace(/\/+$/, ''))
         .filter(Boolean),
     ),
   BODY_LIMIT: z.string().default('10kb'),
