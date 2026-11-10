@@ -23,6 +23,7 @@ import {
   type ProductImageSeed,
   type ProductSeed,
 } from './productSeed';
+import { recolorImage } from './recolorImage';
 import { ensureVariantCatalog } from './seedVariantAttributes';
 import { buildVariantAttributeInputs, variantsForProduct } from './variantSeed';
 import { rootSlugOf, storeSeed } from './siteSeed';
@@ -38,7 +39,21 @@ const imageIdFor = (slug: string, key = '') =>
     .digest('hex')
     .slice(0, 24)}`;
 
-function galleryFor(item: ProductSeed) {
+async function storedImageFor(item: ProductSeed, source: ProductImageSeed) {
+  if (source.recolor) {
+    return recolorImage(source.url, source.recolor);
+  }
+
+  return {
+    provider: 'local' as const,
+    storageKey: `seed/products/${item.slug}${source.key ? `/${source.key}` : ''}`,
+    url: source.url,
+    mimeType: 'image/jpeg' as const,
+    size: 180000,
+  };
+}
+
+async function galleryFor(item: ProductSeed) {
   const sources: ProductImageSeed[] = item.gallery?.length
     ? item.gallery
     : [{ key: '', url: item.image }];
@@ -47,20 +62,20 @@ function galleryFor(item: ProductSeed) {
     throw new Error(`${item.slug} has more than ${MAX_PRODUCT_IMAGES} images`);
   }
 
-  return sources.map((source, sortOrder) => ({
-    key: source.key,
-    image: {
-      imageId: imageIdFor(item.slug, source.key),
-      provider: 'local' as const,
-      storageKey: `seed/products/${item.slug}${source.key ? `/${source.key}` : ''}`,
-      url: source.url,
-      mimeType: 'image/jpeg',
-      size: 180000,
-      alt: source.alt || item.name,
-      sortOrder,
-    },
-  }));
+  return Promise.all(
+    sources.map(async (source, sortOrder) => ({
+      key: source.key,
+      image: {
+        ...(await storedImageFor(item, source)),
+        imageId: imageIdFor(item.slug, source.key),
+        alt: source.alt || item.name,
+        sortOrder,
+      },
+    })),
+  );
 }
+
+type SeedGallery = Awaited<ReturnType<typeof galleryFor>>;
 
 const skuFor = (slug: string) => `NX-${slug}`.toUpperCase().slice(0, 40);
 
@@ -149,7 +164,7 @@ async function upsertProduct(
   categoryId: Types.ObjectId,
   storeId: Types.ObjectId,
   publishedAt: Date,
-  images: ReturnType<typeof galleryFor>[number]['image'][],
+  images: SeedGallery[number]['image'][],
 ) {
   const features = featuresForProduct(item);
   const fields = {
@@ -199,7 +214,7 @@ async function syncProductVariants(
   productId: Types.ObjectId,
   categoryId: Types.ObjectId,
   item: ProductSeed,
-  gallery: ReturnType<typeof galleryFor>,
+  gallery: SeedGallery,
 ) {
   const seeds = variantsForProduct(item);
   const imageId = gallery[0]?.image.imageId ?? '';
@@ -342,15 +357,31 @@ async function syncStores(storeIds: Types.ObjectId[]) {
   );
 }
 
+/** `--only=slug-a,slug-b` reseeds just those products; variants of every other product stay intact. */
+function selectedSlugs() {
+  const flag = process.argv.find((arg) => arg.startsWith('--only='));
+  const slugs = flag?.slice('--only='.length).split(',').filter(Boolean) ?? [];
+  const unknown = slugs.filter((slug) => !productSeed.some((item) => item.slug === slug));
+
+  if (unknown.length > 0) {
+    throw new Error(`Unknown product slugs: ${unknown.join(', ')}`);
+  }
+
+  return slugs.length > 0 ? new Set(slugs) : null;
+}
+
 async function seedProducts() {
+  const only = selectedSlugs();
+  const items = only ? productSeed.filter((item) => only.has(item.slug)) : productSeed;
+
   await connectDatabase();
 
   const storeIds = await ensureStores();
   const categories = await CategoryModel.find({
-    slug: { $in: productSeed.map((item) => item.categorySlug) },
+    slug: { $in: items.map((item) => item.categorySlug) },
   }).select('_id slug');
   const categoryBySlug = new Map(categories.map((category) => [category.slug, category._id]));
-  const missing = productSeed
+  const missing = items
     .map((item) => item.categorySlug)
     .filter((slug) => !categoryBySlug.has(slug));
 
@@ -368,7 +399,7 @@ async function seedProducts() {
   for (let index = 0; index < productSeed.length; index += 1) {
     const item = productSeed[index];
 
-    if (!item) {
+    if (!item || (only && !only.has(item.slug))) {
       continue;
     }
 
@@ -384,7 +415,7 @@ async function seedProducts() {
       throw new Error('No store is available for catalog products');
     }
 
-    const gallery = galleryFor(item);
+    const gallery = await galleryFor(item);
     const product = await upsertProduct(
       item,
       categoryId,
@@ -398,13 +429,11 @@ async function seedProducts() {
 
   await variantService.rebuildListings();
   await syncStores(
-    await ProductModel.find({ slug: { $in: productSeed.map((item) => item.slug) } }).distinct(
-      'storeId',
-    ),
+    await ProductModel.find({ slug: { $in: items.map((item) => item.slug) } }).distinct('storeId'),
   );
 
   const total = await ProductModel.countDocuments({
-    slug: { $in: productSeed.map((item) => item.slug) },
+    slug: { $in: items.map((item) => item.slug) },
   });
   const multiVariantProducts = await ProductVariantModel.aggregate<{ count: number }>([
     { $group: { _id: '$productId', variants: { $sum: 1 } } },

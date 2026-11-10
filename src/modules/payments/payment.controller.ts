@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { Permission } from '../../common/constants/permissions';
-import { env, isProduction } from '../../config/env';
+import { env } from '../../config/env';
 import { asyncHandler } from '../../common/http/asyncHandler';
 import { readIdempotencyKey } from '../../common/utils/idempotency';
 import { sendCreated } from '../../common/http/sendResponse';
@@ -12,7 +12,7 @@ import {
   settleFromGatewayValidation,
   settleMockPayment,
 } from './settle.service';
-import { clientRedirectUrl, verifyMockPaymentSignature } from './sslcommerz.client';
+import { clientRedirectUrl, useMockGateway, verifyMockPaymentSignature } from './sslcommerz.client';
 
 const actorId = (req: Request) => {
   if (!req.auth) {
@@ -120,7 +120,7 @@ const handleIpn = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const handleMockPay = asyncHandler(async (req: Request, res: Response) => {
-  if (isProduction) {
+  if (!useMockGateway()) {
     throw AppError.notFound('Not found');
   }
 
@@ -143,7 +143,7 @@ const handleMockPay = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const mockInfo = asyncHandler(async (_req: Request, res: Response) => {
-  if (isProduction) {
+  if (!useMockGateway()) {
     throw AppError.notFound('Not found');
   }
 
@@ -153,7 +153,7 @@ const mockInfo = asyncHandler(async (_req: Request, res: Response) => {
   <head><meta charset="utf-8"><title>NexCart mock payment</title></head>
   <body style="font-family: system-ui; max-width: 32rem; margin: 3rem auto; line-height: 1.5;">
     <h1>Mock SSLCommerz (free sandbox)</h1>
-    <p>No real money moves. Default for local development when <code>SSLCOMMERZ_MOCK=true</code>.</p>
+    <p>No real money moves. Used when <code>SSLCOMMERZ_MOCK=true</code>, including a demo deployment.</p>
     <p>Start checkout from the app, then open the <code>gatewayPageUrl</code> returned by <code>POST /api/orders/:id/payments</code>.</p>
     <p>API base: <code>${env.PUBLIC_API_URL}</code></p>
   </body>
