@@ -16,6 +16,7 @@
     "seed:stores": "tsx src/scripts/seedStores.ts",
     "seed:products": "tsx src/scripts/seedProducts.ts",
     "seed:site": "tsx src/scripts/seedSite.ts",
+    "seed:admin": "tsx src/scripts/seedAdmin.ts",
     "seed:all": "npm run migrate:user-google-index && npm run seed:categories && npm run seed:stores && npm run seed:products && npm run seed:site",
     "migrate:user-google-index": "tsx src/scripts/migrateUserGoogleIdIndex.ts",
     "migrate:vendor-orders": "tsx src/scripts/migrateVendorOrderLifecycle.ts",

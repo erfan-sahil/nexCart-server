@@ -3,11 +3,20 @@ const photo = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit
 const MAX_SEED_FEATURES = 30;
 const MAX_SEED_FEATURE_LENGTH = 160;
 
+export type ImageRecolor = {
+  /** Degrees to rotate the hue of the base photo. */
+  hue: number;
+  brightness?: number;
+  saturation?: number;
+};
+
 export type ProductImageSeed = {
   /** Stable per-product key; variants reference images by this key. */
   key: string;
   url: string;
   alt?: string;
+  /** Renders this image from `url` with a shifted hue, so a colorway shows the exact same model. */
+  recolor?: ImageRecolor;
 };
 
 export type ProductVariantSeed = {
@@ -133,6 +142,55 @@ export function featuresForProduct(item: ProductSeed) {
 
   return lines.slice(0, MAX_SEED_FEATURES);
 }
+
+type Colorway = { color: string; label: string; recolor?: ImageRecolor };
+
+/** Every colorway is rendered from one base photo, so shoppers never see a different model per color. */
+function colorwayGallery(name: string, baseUrl: string, colorways: Colorway[]): ProductImageSeed[] {
+  return colorways.map(({ color, label, recolor }) => ({
+    key: color,
+    url: baseUrl,
+    alt: `${name} in ${label}`,
+    recolor,
+  }));
+}
+
+type ColorwayVariantRow = {
+  color: string;
+  size?: string;
+  stock: number;
+  price?: number;
+};
+
+type ColorwayDeal = { color: string; size?: string; discountPercent?: number };
+
+/** `deal` marks the default variant, which is also the only discounted one. */
+function colorwayVariants(
+  skuPrefix: string,
+  basePrice: number,
+  deal: ColorwayDeal,
+  rows: ColorwayVariantRow[],
+): ProductVariantSeed[] {
+  return rows.map(({ color, size, stock, price }) => {
+    const isDefault = color === deal.color && size === deal.size;
+
+    return {
+      sku: [skuPrefix, color, size].filter(Boolean).join('-').toUpperCase(),
+      price: price ?? basePrice,
+      stock,
+      isDefault,
+      discountPercent: isDefault ? deal.discountPercent : undefined,
+      imageKey: color,
+      options: size ? { color, size } : { color },
+    };
+  });
+}
+
+const sizeRun = (color: string, [small, medium, large]: [number, number, number]) => [
+  { color, size: 's', stock: small },
+  { color, size: 'm', stock: medium },
+  { color, size: 'l', stock: large },
+];
 
 export const productSeed: ProductSeed[] = [
   {
@@ -385,9 +443,14 @@ export const productSeed: ProductSeed[] = [
     name: 'Court Runner Sneakers',
     slug: 'court-runner-sneakers',
     categorySlug: 'shoes',
-    shortDescription: 'Leather sneakers with a cushioned sole.',
+    shortDescription: 'Knit sneakers with a cushioned sole, in red, blue, and green.',
     description: 'Everyday sneakers with a grippy outsole and a padded collar.',
     image: photo('photo-1542291026-7eec264c27ff'),
+    gallery: colorwayGallery('Court Runner Sneakers', photo('photo-1542291026-7eec264c27ff'), [
+      { color: 'red', label: 'Red' },
+      { color: 'blue', label: 'Blue', recolor: { hue: 220 } },
+      { color: 'green', label: 'Green', recolor: { hue: 115 } },
+    ]),
     price: 120,
     stock: 64,
     tags: ['shoes', 'sneakers'],
@@ -397,7 +460,11 @@ export const productSeed: ProductSeed[] = [
     unitsSold7d: 58,
     views7d: 1100,
     isFeatured: true,
-    discountPercent: 25,
+    variants: colorwayVariants('NX-COURT', 120, { color: 'red', size: 'm', discountPercent: 25 }, [
+      ...sizeRun('red', [8, 14, 10]),
+      ...sizeRun('blue', [6, 9, 5]),
+      ...sizeRun('green', [4, 5, 3]),
+    ]),
   },
   {
     name: 'Stride Flex Runner',
@@ -412,36 +479,15 @@ export const productSeed: ProductSeed[] = [
       'Durable rubber outsole with multi-surface grip',
       'Padded collar and heel tab for an easy fit',
       'Removable cushioned insole',
-      'Available in Black, White, Red, and Green',
+      'Available in Green, Blue, Gold, and Red',
     ],
-    image: photo('photo-1491553895911-0055eca6402d'),
-    gallery: [
-      {
-        key: 'black-1',
-        url: photo('photo-1491553895911-0055eca6402d'),
-        alt: 'Stride Flex Runner in Black',
-      },
-      {
-        key: 'black-2',
-        url: photo('photo-1605348532760-6753d2c43329'),
-        alt: 'Stride Flex Runner in Black, side profile',
-      },
-      {
-        key: 'white-1',
-        url: photo('photo-1608231387042-66d1773070a5'),
-        alt: 'Stride Flex Runner in White',
-      },
-      {
-        key: 'red-1',
-        url: photo('photo-1607522370275-f14206abe5d3'),
-        alt: 'Stride Flex Runner in Red',
-      },
-      {
-        key: 'green-1',
-        url: photo('photo-1606107557195-0e29a4b5b4aa'),
-        alt: 'Stride Flex Runner in Green',
-      },
-    ],
+    image: photo('photo-1606107557195-0e29a4b5b4aa'),
+    gallery: colorwayGallery('Stride Flex Runner', photo('photo-1606107557195-0e29a4b5b4aa'), [
+      { color: 'green', label: 'Green' },
+      { color: 'blue', label: 'Blue', recolor: { hue: 130 } },
+      { color: 'gold', label: 'Gold', recolor: { hue: -25 } },
+      { color: 'red', label: 'Red', recolor: { hue: -78, brightness: 0.8, saturation: 1.6 } },
+    ]),
     price: 140,
     stock: 0,
     tags: ['shoes', 'sneakers', 'running'],
@@ -451,28 +497,54 @@ export const productSeed: ProductSeed[] = [
     unitsSold7d: 46,
     views7d: 960,
     isFeatured: true,
-    variants: [
-      { color: 'black', size: 's', stock: 14 },
-      { color: 'black', size: 'm', stock: 22, isDefault: true, discountPercent: 15 },
-      { color: 'black', size: 'l', stock: 18 },
-      { color: 'white', size: 's', stock: 10 },
-      { color: 'white', size: 'm', stock: 16 },
-      { color: 'white', size: 'l', stock: 4 },
-      { color: 'red', size: 's', stock: 8 },
-      { color: 'red', size: 'm', stock: 12, price: 150 },
-      { color: 'red', size: 'l', stock: 0, price: 150 },
-      { color: 'green', size: 's', stock: 6 },
-      { color: 'green', size: 'm', stock: 9 },
-      { color: 'green', size: 'l', stock: 3 },
-    ].map(({ color, size, stock, price, isDefault, discountPercent }) => ({
-      sku: `NX-STRIDE-${color}-${size}`.toUpperCase(),
-      price: price ?? 140,
-      stock,
-      isDefault,
-      discountPercent,
-      imageKey: `${color}-1`,
-      options: { color, size },
-    })),
+    variants: colorwayVariants(
+      'NX-STRIDE',
+      140,
+      { color: 'green', size: 'm', discountPercent: 15 },
+      [
+        ...sizeRun('green', [14, 22, 18]),
+        ...sizeRun('blue', [10, 16, 4]),
+        ...sizeRun('gold', [6, 9, 3]),
+        { color: 'red', size: 's', stock: 8 },
+        { color: 'red', size: 'm', stock: 12, price: 150 },
+        { color: 'red', size: 'l', stock: 0, price: 150 },
+      ],
+    ),
+  },
+  {
+    name: 'Aero Cushion Sneakers',
+    slug: 'aero-cushion-sneakers',
+    categorySlug: 'shoes',
+    shortDescription: 'Lifestyle sneakers with a visible air cushion, in red, blue, and green.',
+    description:
+      'A mesh and suede upper on a cushioned midsole with a visible air unit for all-day comfort.',
+    features: [
+      'Breathable mesh upper with suede overlays',
+      'Visible air cushioning in the heel',
+      'Foam midsole for all-day comfort',
+      'Rubber outsole with a waffle tread',
+      'Available in Red, Blue, and Green',
+    ],
+    image: photo('photo-1600185365483-26d7a4cc7519'),
+    gallery: colorwayGallery('Aero Cushion Sneakers', photo('photo-1600185365483-26d7a4cc7519'), [
+      { color: 'red', label: 'Red', recolor: { hue: -15, saturation: 1.1 } },
+      { color: 'blue', label: 'Blue', recolor: { hue: 200, saturation: 1.1 } },
+      { color: 'green', label: 'Green', recolor: { hue: 100, saturation: 1.1 } },
+    ]),
+    price: 150,
+    stock: 0,
+    tags: ['shoes', 'sneakers', 'lifestyle'],
+    ratingAverage: 4.6,
+    ratingCount: 172,
+    unitsSold30d: 124,
+    unitsSold7d: 31,
+    views7d: 740,
+    isFeatured: true,
+    variants: colorwayVariants('NX-AERO', 150, { color: 'red', size: 'm', discountPercent: 10 }, [
+      ...sizeRun('red', [9, 15, 11]),
+      ...sizeRun('blue', [7, 12, 8]),
+      ...sizeRun('green', [5, 6, 2]),
+    ]),
   },
   {
     name: 'City Tote',
@@ -489,6 +561,43 @@ export const productSeed: ProductSeed[] = [
     unitsSold30d: 67,
     unitsSold7d: 14,
     views7d: 300,
+  },
+  {
+    name: 'Verona Top-Handle Bag',
+    slug: 'verona-top-handle-bag',
+    categorySlug: 'bags',
+    shortDescription: 'Polished leather top-handle bag in four colors.',
+    description:
+      'A structured calfskin bag with a turn-lock flap, a detachable shoulder strap, and a lined interior.',
+    features: [
+      'Polished calfskin leather',
+      'Silver-tone turn-lock closure',
+      'Rolled top handle and detachable shoulder strap',
+      'Lined interior with a slip pocket',
+      'Available in Red, Blue, Green, and Gold',
+    ],
+    image: photo('photo-1584917865442-de89df76afd3'),
+    gallery: colorwayGallery('Verona Top-Handle Bag', photo('photo-1584917865442-de89df76afd3'), [
+      { color: 'red', label: 'Red' },
+      { color: 'blue', label: 'Blue', recolor: { hue: 225, brightness: 0.6, saturation: 0.9 } },
+      { color: 'green', label: 'Green', recolor: { hue: 120, brightness: 0.85, saturation: 0.9 } },
+      { color: 'gold', label: 'Gold', recolor: { hue: 38, brightness: 1.05 } },
+    ]),
+    price: 260,
+    stock: 0,
+    tags: ['bag', 'handbag', 'leather'],
+    ratingAverage: 4.7,
+    ratingCount: 96,
+    unitsSold30d: 48,
+    unitsSold7d: 11,
+    views7d: 420,
+    isFeatured: true,
+    variants: colorwayVariants('NX-VERONA', 260, { color: 'red', discountPercent: 12 }, [
+      { color: 'red', stock: 12 },
+      { color: 'blue', stock: 9 },
+      { color: 'green', stock: 6 },
+      { color: 'gold', stock: 4, price: 280 },
+    ]),
   },
   {
     name: 'Gold Hoop Earrings',

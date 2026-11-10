@@ -131,3 +131,13 @@ if (env.REDIS_REQUIRED && !env.REDIS_ENABLED) {
 if (isProduction && env.SSLCOMMERZ_MOCK) {
   throw new Error('Disable SSLCOMMERZ_MOCK before running in production');
 }
+
+if (
+  !env.SSLCOMMERZ_MOCK &&
+  (!env.SSLCOMMERZ_STORE_ID || !env.SSLCOMMERZ_STORE_PASSWORD) &&
+  isProduction
+) {
+  throw new Error(
+    'Set SSLCOMMERZ_STORE_ID and SSLCOMMERZ_STORE_PASSWORD before running in production',
+  );
+}
